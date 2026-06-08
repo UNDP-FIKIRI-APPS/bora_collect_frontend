@@ -16,8 +16,6 @@ const AdminPMRequests = lazy(() => import('./AdminPMRequests'));
 const AdminCreateProjectManager = lazy(() => import('./AdminCreateProjectManager'));
 const AdminCampaignData = lazy(() => import('./AdminCampaignData'));
 const AdminSettings = lazy(() => import('./AdminSettings'));
-const ExportsStats = lazy(() => import('./ExportsStats'));
-const AdminDeletedUsers = lazy(() => import('./AdminDeletedUsers'));
 const AdminSurveyPublication = lazy(() => import('./AdminSurveyPublication'));
 const AdminCandidatures = lazy(() => import('./AdminCandidatures'));
 
@@ -166,7 +164,6 @@ export function DashboardAdmin() {
         <ul className="list-disc ml-4 sm:ml-8 text-sm sm:text-base text-gray-700 mb-4 space-y-1">
           <li>Gérer les utilisateurs du système</li>
           <li>Consulter les statistiques globales</li>
-          <li>Exporter les données et rapports</li>
           <li>Consulter les données du système grâce à la carte</li>
         </ul>
       </div>
@@ -300,7 +297,7 @@ export default function AdminHome() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pendingCounts, setPendingCounts] = useState({ total: 0, pendingApplications: 0, pendingPMRequests: 0, pendingRecords: 0 });
   const navigate = useNavigate();
-  const [view, setView] = useState('dashboard'); // dashboard, users, campaigns, pending-approvals, pm-requests, create-pm, campaign-data, survey-publication, candidatures, exports, deleted-users, settings
+  const [view, setView] = useState('dashboard');
 
   // Fonction pour charger les compteurs de demandes en attente
   const fetchPendingCounts = async () => {
@@ -403,9 +400,9 @@ export default function AdminHome() {
       {/* Navigation responsive */}
       <nav className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white shadow-lg border-b border-blue-700">
         <div className="max-w-full mx-auto px-2 sm:px-4 lg:px-6">
-          <div className="flex justify-between items-center h-20">
+          <div className="flex justify-between items-center min-h-[4rem] lg:h-20 py-2 lg:py-0 gap-2">
           {/* Logo et titre */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 min-w-0">
               <div className="relative">
                 <img src={APP_LOGO_URL} alt="Logo Fikiri Collect" className="h-8 sm:h-10 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
                 <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
@@ -418,17 +415,18 @@ export default function AdminHome() {
           
           {/* Bouton menu mobile */}
           <button 
-              className="md:hidden p-2 rounded-lg hover:bg-blue-700/50 transition-all duration-200 hover:scale-105 active:scale-95"
+              className="lg:hidden p-2 rounded-lg hover:bg-blue-700/50 transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label="Menu"
+            aria-expanded={isMobileMenuOpen}
           >
               <svg className="w-6 h-6 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
           
-          {/* Menu desktop */}
-            <div className="hidden md:flex items-center gap-0.5 lg:gap-1">
+          {/* Menu desktop / tablette large */}
+            <div className="hidden lg:flex items-center gap-0.5 xl:gap-1 flex-1 min-w-0 justify-end overflow-x-auto scrollbar-thin">
           <button 
               onClick={() => handleViewChange('dashboard')} 
                 className={`px-1.5 lg:px-2 py-2 rounded-lg font-semibold text-xs lg:text-sm transition-all duration-200 whitespace-nowrap ${
@@ -545,27 +543,6 @@ export default function AdminHome() {
                 <span className="lg:hidden">Cand.</span>
           </button>
           <button 
-                onClick={() => handleViewChange('exports')} 
-                className={`px-1.5 lg:px-2 py-2 rounded-lg font-semibold text-xs lg:text-sm transition-all duration-200 whitespace-nowrap ${
-                  view === 'exports' 
-                    ? 'bg-white text-blue-900 shadow-lg transform scale-105' 
-                    : 'text-white hover:bg-blue-700/50 hover:scale-105'
-                }`}
-              >
-                Exports
-          </button>
-          <button 
-                onClick={() => handleViewChange('deleted-users')} 
-                className={`px-1.5 lg:px-2 py-2 rounded-lg font-semibold text-xs lg:text-sm transition-all duration-200 whitespace-nowrap ${
-                  view === 'deleted-users' 
-                    ? 'bg-white text-blue-900 shadow-lg transform scale-105' 
-                    : 'text-white hover:bg-blue-700/50 hover:scale-105'
-                }`}
-              >
-                <span className="hidden lg:inline">Supprimés</span>
-                <span className="lg:hidden">Suppr.</span>
-          </button>
-          <button 
                 onClick={() => handleViewChange('settings')} 
                 className={`px-1.5 lg:px-2 py-2 rounded-lg font-semibold text-xs lg:text-sm transition-all duration-200 whitespace-nowrap ${
                   view === 'settings' 
@@ -617,11 +594,11 @@ export default function AdminHome() {
         
         {/* Menu mobile */}
         {isMobileMenuOpen && (
-          <div className="md:hidden bg-blue-800/50 backdrop-blur-sm border-t border-blue-700">
+          <div className="lg:hidden bg-blue-800/50 backdrop-blur-sm border-t border-blue-700 max-h-[70vh] overflow-y-auto">
             <div className="px-4 py-4 space-y-2">
             <button 
               onClick={() => handleViewChange('dashboard')} 
-                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 touch-manipulation min-h-[44px] ${
                   view === 'dashboard' 
                     ? 'bg-white text-blue-900 shadow-lg' 
                     : 'text-white hover:bg-blue-700/50'
@@ -636,7 +613,7 @@ export default function AdminHome() {
             </button>
             <button 
                 onClick={() => handleViewChange('users')} 
-                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 touch-manipulation min-h-[44px] ${
                   view === 'users' 
                     ? 'bg-white text-blue-900 shadow-lg' 
                     : 'text-white hover:bg-blue-700/50'
@@ -651,7 +628,7 @@ export default function AdminHome() {
             </button>
             <button 
                 onClick={() => handleViewChange('campaigns')} 
-                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 touch-manipulation min-h-[44px] ${
                   view === 'campaigns' 
                     ? 'bg-white text-blue-900 shadow-lg' 
                     : 'text-white hover:bg-blue-700/50'
@@ -666,7 +643,7 @@ export default function AdminHome() {
           </button>
             <button 
               onClick={() => handleViewChange('pending-approvals')} 
-                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 touch-manipulation min-h-[44px] ${
                   view === 'pending-approvals' 
                     ? 'bg-white text-blue-900 shadow-lg' 
                     : 'text-white hover:bg-blue-700/50'
@@ -681,7 +658,7 @@ export default function AdminHome() {
             </button>
             <button 
                 onClick={() => handleViewChange('campaign-data')} 
-                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 touch-manipulation min-h-[44px] ${
                   view === 'campaign-data' 
                     ? 'bg-white text-blue-900 shadow-lg' 
                     : 'text-white hover:bg-blue-700/50'
@@ -694,13 +671,11 @@ export default function AdminHome() {
                   Données Campagnes
                 </div>
             </button>
-            <button onClick={() => handleViewChange('survey-publication')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${view === 'survey-publication' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Publication</button>
-            <button onClick={() => handleViewChange('candidatures')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${view === 'candidatures' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Candidatures</button>
-            <button onClick={() => handleViewChange('exports')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${view === 'exports' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Exports</button>
-            <button onClick={() => handleViewChange('deleted-users')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${view === 'deleted-users' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Utilisateurs supprimés</button>
+            <button onClick={() => handleViewChange('survey-publication')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 touch-manipulation min-h-[44px] ${view === 'survey-publication' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Publication</button>
+            <button onClick={() => handleViewChange('candidatures')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 touch-manipulation min-h-[44px] ${view === 'candidatures' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Candidatures</button>
             <button 
                 onClick={() => handleViewChange('settings')} 
-                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 touch-manipulation min-h-[44px] ${
                   view === 'settings' 
                     ? 'bg-white text-blue-900 shadow-lg' 
                     : 'text-white hover:bg-blue-700/50'
@@ -751,7 +726,7 @@ export default function AdminHome() {
       </nav>
       
       {/* Contenu principal */}
-      <main className="p-4 sm:p-8">
+      <main className="p-3 sm:p-6 lg:p-8 max-w-[100vw] overflow-x-hidden">
         {view === 'dashboard' && <DashboardAdmin />}
         {view === 'users' && (
           <Suspense fallback={<PageLoadingFallback />}>
@@ -804,16 +779,6 @@ export default function AdminHome() {
         {view === 'candidatures' && (
           <Suspense fallback={<PageLoadingFallback />}>
             <AdminCandidatures />
-          </Suspense>
-        )}
-        {view === 'exports' && (
-          <Suspense fallback={<PageLoadingFallback />}>
-            <ExportsStats />
-          </Suspense>
-        )}
-        {view === 'deleted-users' && (
-          <Suspense fallback={<PageLoadingFallback />}>
-            <AdminDeletedUsers />
           </Suspense>
         )}
         {view === 'settings' && (

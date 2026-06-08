@@ -294,8 +294,44 @@ body {
 }
 
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  font-size: clamp(1.5rem, 4vw, 3.2em);
+  line-height: 1.2;
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.4) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.35);
+    border-radius: 9999px;
+  }
+
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+}
+
+/* Tables et formulaires : défilement horizontal sur petits écrans */
+@layer components {
+  .responsive-table-wrap {
+    @apply w-full overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0;
+  }
+
+  .responsive-table-wrap table {
+    @apply min-w-full;
+  }
+
+  .responsive-page {
+    @apply w-full max-w-[100vw] overflow-x-hidden px-3 sm:px-4 lg:px-6;
+  }
 }
 
 /* On retire le style global des boutons pour laisser Tailwind gérer */
