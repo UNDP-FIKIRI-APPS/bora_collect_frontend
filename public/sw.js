@@ -1,106 +1,99 @@
-// Service Worker pour PWA - Cache offline
-const CACHE_NAME = 'fikiri-collect-v2';
-const STATIC_CACHE_NAME = 'fikiri-static-v2';
+// Service Worker PWA — cache léger, compatible tous navigateurs
+const STATIC_CACHE_NAME = 'fikiri-static-v3';
 
-// Assets à mettre en cache immédiatement
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-];
+const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
-// Installer le service worker
+function isCacheableRequest(request) {
+  try {
+    const url = new URL(request.url);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return false;
+    }
+    if (request.method !== 'GET') {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isStaticAsset(url) {
+  return (
+    url.pathname.startsWith('/assets/') ||
+    /\.(js|css|png|jpe?g|svg|webp|woff2?|ico)$/i.test(url.pathname)
+  );
+}
+
+async function cacheResponse(cacheName, request, response) {
+  if (!isCacheableRequest(request) || !response || response.status !== 200) {
+    return;
+  }
+  try {
+    const cache = await caches.open(cacheName);
+    await cache.put(request, response.clone());
+  } catch (error) {
+    console.warn('[SW] Cache ignoré:', request.url, error?.message || error);
+  }
+}
+
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker...');
   event.waitUntil(
-    caches.open(STATIC_CACHE_NAME).then((cache) => {
-      console.log('[SW] Caching static assets');
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(STATIC_CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)),
   );
   self.skipWaiting();
 });
 
-// Activer le service worker
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating service worker...');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => {
-            return name !== CACHE_NAME && 
-                   name !== STATIC_CACHE_NAME;
-          })
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
-    })
+    caches.keys().then((names) =>
+      Promise.all(
+        names
+          .filter((name) => name !== STATIC_CACHE_NAME)
+          .map((name) => caches.delete(name)),
+      ),
+    ),
   );
   self.clients.claim();
 });
 
-// Intercepter les requêtes
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
 
-  // Ignorer les requêtes non-GET
-  if (request.method !== 'GET') {
+  if (!isCacheableRequest(request)) {
     return;
   }
 
-  // Assets statiques : Network First (fraîcheur prioritaire)
+  const url = new URL(request.url);
+
+  // Ne jamais intercepter les API
   if (
-    url.pathname.startsWith('/assets/') ||
-    url.pathname.endsWith('.js') ||
-    url.pathname.endsWith('.css') ||
-    url.pathname.endsWith('.png') ||
-    url.pathname.endsWith('.jpg') ||
-    url.pathname.endsWith('.jpeg') ||
-    url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.woff') ||
-    url.pathname.endsWith('.woff2')
+    url.pathname.startsWith('/api/') ||
+    url.hostname.includes('api.collect.fikiri.co') ||
+    url.hostname.includes('localhost:3000')
   ) {
+    return;
+  }
+
+  if (isStaticAsset(url)) {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.status === 200) {
-            const responseToCache = response.clone();
-            caches.open(STATIC_CACHE_NAME).then((cache) => {
-              cache.put(request, responseToCache);
-            });
-          }
+          cacheResponse(STATIC_CACHE_NAME, request, response);
           return response;
         })
-        .catch(() => caches.match(request))
+        .catch(() => caches.match(request)),
     );
     return;
   }
 
-  // Ne pas mettre en cache les requêtes API authentifiées
-  if (url.pathname.startsWith('/api/') || url.origin.includes('api.collect.fikiri.co') || url.origin.includes('localhost:3000')) {
-    return;
-  }
-
-  // Stratégie pour les pages HTML (Network First)
+  // Pages HTML : network first, fallback cache
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.status === 200) {
-          const responseToCache = response.clone();
-          caches.open(STATIC_CACHE_NAME).then((cache) => {
-            cache.put(request, responseToCache);
-          });
-        }
+        cacheResponse(STATIC_CACHE_NAME, request, response);
         return response;
       })
-      .catch(() => {
-        return caches.match(request).then((cachedResponse) => {
-          return cachedResponse || caches.match('/index.html');
-        });
-      })
+      .catch(() => caches.match(request).then((cached) => cached || caches.match('/index.html'))),
   );
 });
