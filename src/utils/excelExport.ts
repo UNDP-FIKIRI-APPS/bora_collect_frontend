@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { collectFormDataKeysFromRecords, flattenFormData } from './formDataFlatten';
 
 // Interface pour les données d'enquête
 export interface EnqueteData {
@@ -35,217 +36,66 @@ export interface StatsGlobales {
   nombreEnquetes: number;
 }
 
-// Fonction pour exporter les enquêtes en Excel
+// Fonction pour exporter les enquêtes en Excel (tous les champs formData dynamiquement)
 export const exportEnquetesToExcel = (enquetes: any[], filename: string = 'enquetes') => {
   try {
-    console.log('📊 Début de l\'export Excel des enquêtes...');
-    console.log('📋 Nombre d\'enquêtes à exporter:', enquetes.length);
-    
-    // Préparer les données pour l'export
-    const exportData = enquetes.map((enquete, index) => {
-      const authorName = enquete.authorName || 'N/A';
-      console.log(`🔍 Enquête ${index + 1}: ID=${enquete.id}, Enquêteur=${authorName}, AuthorID=${enquete.authorId}`);
-      
-      // Fonction helper pour obtenir une valeur avec fallback
-      const getValue = (newKey: string, oldKey?: string, oldSubKey?: string) => {
-        // Vérifier d'abord le nouveau format
-        if (enquete.formData?.[newKey] !== undefined && enquete.formData?.[newKey] !== null) {
-          const value = enquete.formData[newKey];
-          // Si c'est une chaîne vide, retourner 'N/A'
-          if (typeof value === 'string' && value.trim() === '') {
-            return 'N/A';
-          }
-          return value;
-        }
-        // Fallback vers l'ancien format
-        if (oldKey && oldSubKey && enquete.formData?.[oldKey]) {
-          const value = enquete.formData[oldKey]?.[oldSubKey];
-          if (typeof value === 'string' && value.trim() === '') {
-            return 'N/A';
-          }
-          return value;
-        }
-        return 'N/A';
-      };
-      
-      // Fonction helper pour les tableaux
-      const getArrayValue = (newKey: string, oldKey?: string, oldSubKey?: string) => {
-        const value = getValue(newKey, oldKey, oldSubKey);
-        if (Array.isArray(value)) {
-          return value.length > 0 ? value.join(', ') : '0';
-        }
-        // Pour les avantages spécifiquement, retourner "0" au lieu de "N/A"
-        if (newKey === 'connaissance.avantages' || oldSubKey === 'avantages') {
-          return '0';
-        }
-        return value || 'N/A';
-      };
-      
-      // Fonction helper pour les objets de classement
-      const getRankingValue = (key: string) => {
-        try {
-          const value = enquete.formData?.[key];
-          if (typeof value === 'object' && value !== null) {
-            return Object.entries(value)
-              .sort(([,a], [,b]) => {
-                const order = ['1er', '2e', '3e', '4e', '5e'];
-                return order.indexOf(a as string) - order.indexOf(b as string);
-              })
-              .map(([item, rank]) => `${item} (${rank})`)
-              .join(', ');
-          }
-          return value || 'N/A';
-        } catch (error) {
-          console.error('Erreur dans getRankingValue:', error);
-          return 'N/A';
-        }
-      };
-      
-      return {
-      'ID Enquête': enquete.id || 'N/A',
-      'Nom/Code Ménage': getValue('identification.nomOuCode', 'household', 'nomOuCode'),
-      'Âge': getValue('identification.age', 'household', 'age'),
-      'Sexe': getValue('identification.sexe', 'household', 'sexe'),
-      'Taille du Ménage': getValue('identification.tailleMenage', 'household', 'tailleMenage'),
-      'Commune/Quartier': getValue('identification.communeQuartier', 'household', 'communeQuartier'),
-      'Géolocalisation': (() => {
-        // Essayer plusieurs formats possibles pour la géolocalisation
-        const formData = enquete.formData || {};
-        
-        // D'abord, chercher les coordonnées GPS
-        // Format 1: identification.geolocalisation (nouveau format pour soumissions publiques)
-        const gps1 = formData['identification.geolocalisation'];
-        if (gps1 && typeof gps1 === 'string' && gps1.trim() !== '' && gps1 !== 'N/A') {
-          return gps1;
-        }
-        
-        // Format 2: household.geolocalisation (ancien format pour soumissions via application)
-        const gps2 = formData['household.geolocalisation'];
-        if (gps2 && typeof gps2 === 'string' && gps2.trim() !== '' && gps2 !== 'N/A') {
-          return gps2;
-        }
-        
-        // Format 3: identification.geolocalisation (format imbriqué)
-        const gps3 = formData?.identification?.geolocalisation;
-        if (gps3 && typeof gps3 === 'string' && gps3.trim() !== '' && gps3 !== 'N/A') {
-          return gps3;
-        }
-        
-        // Format 4: household.geolocalisation (format imbriqué)
-        const gps4 = formData?.household?.geolocalisation;
-        if (gps4 && typeof gps4 === 'string' && gps4.trim() !== '' && gps4 !== 'N/A') {
-          return gps4;
-        }
-        
-        // Format 5: Utiliser getValue avec fallback
-        const gps5 = getValue('identification.geolocalisation', 'identification', 'geolocalisation');
-        if (gps5 !== 'N/A' && gps5 && typeof gps5 === 'string' && gps5.trim() !== '') {
-          return gps5;
-        }
-        
-        const gps6 = getValue('household.geolocalisation', 'household', 'geolocalisation');
-        if (gps6 !== 'N/A' && gps6 && typeof gps6 === 'string' && gps6.trim() !== '') {
-          return gps6;
-        }
-        
-        // Si pas de GPS, chercher l'adresse manuelle complète
-        const getAddressValue = (key: string): string | null => {
-          const value = getValue(key);
-          if (value && value !== 'N/A' && typeof value === 'string' && value.trim() !== '') {
-            return value.trim();
-          }
-          return null;
-        };
-        
-        // Chercher la province
-        const provinceKeys = ['identification.province', 'household.province', 'province'];
-        let province: string | null = null;
-        for (const key of provinceKeys) {
-          province = getAddressValue(key);
-          if (province) break;
-        }
-        
-        // Chercher commune/quartier/ville
-        const addressKeys = [
-          'identification.communeQuartier', 'household.communeQuartier', 'communeQuartier',
-          'identification.commune', 'household.commune', 'commune',
-          'identification.quartier', 'household.quartier', 'quartier',
-          'identification.ville', 'household.ville', 'ville',
-          'identification.city', 'household.city', 'city'
-        ];
-        let address: string | null = null;
-        for (const key of addressKeys) {
-          address = getAddressValue(key);
-          if (address) break;
-        }
-        
-        // Construire l'adresse complète si disponible
-        if (province && address) {
-          return `${province}, ${address}`;
-        } else if (address) {
-          return address;
-        } else if (province) {
-          return province;
-        }
-        
-        // Log pour déboguer si aucune valeur GPS n'est trouvée
-        if (index === 0) {
-          console.log('🔍 Debug GPS - Clés disponibles dans formData:', Object.keys(formData));
-          console.log('🔍 Debug GPS - Exemples de valeurs:', {
-            'identification.geolocalisation': formData['identification.geolocalisation'],
-            'household.geolocalisation': formData['household.geolocalisation'],
-            'identification': formData?.identification,
-            'household': formData?.household
-          });
-        }
-        
-        return 'N/A';
-      })(),
-      'Date de Création': enquete.createdAt ? new Date(enquete.createdAt).toLocaleString('fr-FR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      }) : 'N/A',
-      'Enquêteur': enquete.authorName || 'N/A',
-      'Combustibles Utilisés': getRankingValue('modeCuisson.combustibles'),
-      'Équipements Utilisés': getValue('modeCuisson.equipements', 'cooking', 'equipements'),
-      'Connaissance Solutions Propres': getValue('connaissance.connaissanceSolutions', 'knowledge', 'connaissanceSolutions'),
-      'Avantages Perçus': getArrayValue('connaissance.avantages', 'knowledge', 'avantages'),
-      'Obstacles à l\'Adoption': getArrayValue('perceptions.obstacles', 'constraints', 'obstacles'),
-      'Prêt à Acheter Foyer': getValue('intentionAdoption.pretAcheterFoyer', 'adoption', 'pretAcheterFoyer'),
-      'Prêt à Acheter GPL': getValue('intentionAdoption.pretAcheterGPL', 'adoption', 'pretAcheterGPL')
-    };
-    });
-    
-    console.log('✅ Données préparées pour l\'export:', exportData.length, 'lignes');
-
-    // Créer le workbook et la feuille
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-
-    // Ajuster la largeur des colonnes
-    const columnWidths = [
-      { wch: 15 }, // ID Enquête
-      { wch: 20 }, // Nom/Code Ménage
-      { wch: 10 }, // Âge
-      { wch: 10 }, // Sexe
-      { wch: 15 }, // Taille du Ménage
-      { wch: 20 }, // Commune/Quartier
-      { wch: 20 }, // Géolocalisation
-      { wch: 15 }, // Date de Création
-      { wch: 20 }, // Enquêteur
-      { wch: 30 }, // Combustibles Utilisés
-      { wch: 30 }, // Équipements Utilisés
-      { wch: 25 }, // Connaissance Solutions Propres
-      { wch: 30 }, // Avantages Perçus
-      { wch: 30 }, // Obstacles à l'Adoption
-      { wch: 20 }, // Prêt à Acheter Foyer
-      { wch: 20 }  // Prêt à Acheter GPL
+    const formKeys = collectFormDataKeysFromRecords(enquetes);
+    const metadataHeaders = [
+      'ID',
+      'Source',
+      'Date de création',
+      'Enquêteur',
+      'Statut',
+      'Statut validation analyste',
+      'Commentaire analyste',
+      'ID Campagne',
+      'Données complètes (JSON)',
     ];
-    worksheet['!cols'] = columnWidths;
+
+    const exportData = enquetes.map((enquete) => {
+      const flat = flattenFormData(enquete.formData);
+      const row: Record<string, string> = {
+        ID: enquete.id || '',
+        Source:
+          enquete.source === 'public_link'
+            ? 'Lien public'
+            : enquete.source === 'application'
+              ? 'Application'
+              : '',
+        'Date de création': enquete.createdAt
+          ? new Date(enquete.createdAt).toLocaleString('fr-FR', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            })
+          : '',
+        Enquêteur:
+          enquete.authorName ||
+          enquete.author?.name ||
+          enquete.submitterName ||
+          '',
+        Statut: enquete.status || '',
+        'Statut validation analyste': enquete.analystValidationStatus || '',
+        'Commentaire analyste': enquete.analystComments || '',
+        'ID Campagne': enquete.surveyId || '',
+        'Données complètes (JSON)': JSON.stringify(enquete.formData ?? {}),
+      };
+
+      for (const key of formKeys) {
+        row[key] = flat[key] ?? '';
+      }
+
+      return row;
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(exportData, {
+      header: [...metadataHeaders, ...formKeys],
+    });
+    worksheet['!cols'] = [...metadataHeaders, ...formKeys].map(() => ({ wch: 20 }));
 
     // Ajouter la feuille au workbook
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Enquêtes');

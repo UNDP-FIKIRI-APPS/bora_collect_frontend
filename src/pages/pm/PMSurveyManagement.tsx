@@ -41,6 +41,16 @@ interface CreateSurveyData {
   totalEnumeratorTarget?: number;
 }
 
+interface ReusableFormTemplate {
+  id: string;
+  name: string;
+  description: string;
+  surveyId: string;
+  survey?: { id: string; title: string; status: string };
+}
+
+type FormSetupMode = 'later' | 'reuse' | 'new';
+
 const PMSurveyManagement: React.FC = () => {
   // États
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -54,6 +64,13 @@ const PMSurveyManagement: React.FC = () => {
   const [selectedProvince, setSelectedProvince] = useState('');
   const [selectedYear, setSelectedYear] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [formSetupMode, setFormSetupMode] = useState<FormSetupMode>('later');
+  const [reusableForms, setReusableForms] = useState<ReusableFormTemplate[]>([]);
+  const [loadingReusableForms, setLoadingReusableForms] = useState(false);
+  const [sourceFormTemplateId, setSourceFormTemplateId] = useState('');
+  const [newFormName, setNewFormName] = useState('');
+  const [newFormDescription, setNewFormDescription] = useState('');
+
   const [formData, setFormData] = useState<CreateSurveyData>({
     title: '',
     description: '',
@@ -163,6 +180,33 @@ const PMSurveyManagement: React.FC = () => {
     }
   }, [getAuthToken, handleApiError]);
 
+  const fetchReusableForms = useCallback(async () => {
+    try {
+      setLoadingReusableForms(true);
+      const token = getAuthToken();
+      if (!token) return;
+
+      const response = await fetch(`${environment.apiBaseUrl}/forms`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setReusableForms(Array.isArray(data) ? data : []);
+    } catch (error) {
+      handleApiError(error, 'du chargement des formulaires existants');
+      setReusableForms([]);
+    } finally {
+      setLoadingReusableForms(false);
+    }
+  }, [getAuthToken, handleApiError]);
+
   // Fonction pour soumettre le formulaire
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,6 +239,16 @@ const PMSurveyManagement: React.FC = () => {
         return;
       }
 
+      if (!editingSurvey && formSetupMode === 'reuse' && !sourceFormTemplateId) {
+        toast.error('Veuillez sélectionner un formulaire à réutiliser');
+        return;
+      }
+
+      if (!editingSurvey && formSetupMode === 'new' && !newFormName.trim()) {
+        toast.error('Veuillez donner un nom au nouveau formulaire');
+        return;
+      }
+
       const token = getAuthToken();
       if (!token) return;
 
@@ -210,7 +264,7 @@ const PMSurveyManagement: React.FC = () => {
           : undefined);
 
       // Préparation des données
-      const cleanData = {
+      const cleanData: Record<string, unknown> = {
         title: formData.title.trim(),
         description: formData.description.trim(),
         startDate: new Date(formData.startDate).toISOString(),
@@ -220,11 +274,25 @@ const PMSurveyManagement: React.FC = () => {
         duration: formData.duration?.trim() || null,
         compensation: formData.compensation?.trim() || null,
         maxApplicants: formData.maxApplicants || null,
-        // Champs d'objectifs
         totalTargetRespondents: formData.totalTargetRespondents || null,
         campaignDurationDays: derivedCampaignDays,
-        dailyTargetPerEnumerator: formData.dailyTargetPerEnumerator
+        dailyTargetPerEnumerator: formData.dailyTargetPerEnumerator,
       };
+
+      if (!editingSurvey) {
+        cleanData.formSetup = {
+          mode: formSetupMode,
+          ...(formSetupMode === 'reuse' && {
+            sourceFormTemplateId,
+            newFormName: newFormName.trim() || undefined,
+            newFormDescription: newFormDescription.trim() || undefined,
+          }),
+          ...(formSetupMode === 'new' && {
+            newFormName: newFormName.trim(),
+            newFormDescription: newFormDescription.trim() || undefined,
+          }),
+        };
+      }
 
       // URL et méthode
       const url = editingSurvey 
@@ -249,10 +317,17 @@ const PMSurveyManagement: React.FC = () => {
       }
 
       const result = await response.json();
-      
-      // Succès
+
       const action = editingSurvey ? 'modifiée' : 'créée';
-      toast.success(`Enquête ${action} avec succès !`);
+      if (!editingSurvey && result.form) {
+        if (formSetupMode === 'reuse') {
+          toast.success(`Campagne créée et formulaire réutilisé avec succès !`);
+        } else if (formSetupMode === 'new') {
+          toast.success(`Campagne créée avec un nouveau formulaire. Complétez-le dans « Formulaires ».`);
+        }
+      } else {
+        toast.success(`Enquête ${action} avec succès !`);
+      }
       
       // Réinitialisation et rechargement
       resetForm();
@@ -263,7 +338,17 @@ const PMSurveyManagement: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [formData, editingSurvey, getAuthToken, handleApiError, fetchSurveys]);
+  }, [
+    formData,
+    editingSurvey,
+    formSetupMode,
+    sourceFormTemplateId,
+    newFormName,
+    newFormDescription,
+    getAuthToken,
+    handleApiError,
+    fetchSurveys,
+  ]);
 
   // Fonction pour réinitialiser le formulaire
   const resetForm = useCallback(() => {
@@ -282,6 +367,10 @@ const PMSurveyManagement: React.FC = () => {
     dailyTargetPerEnumerator: undefined,
     totalEnumeratorTarget: undefined
     });
+    setFormSetupMode('later');
+    setSourceFormTemplateId('');
+    setNewFormName('');
+    setNewFormDescription('');
     setEditingSurvey(null);
     setShowCreateForm(false);
   }, []);
@@ -517,10 +606,15 @@ const PMSurveyManagement: React.FC = () => {
     setSelectedStatus('');
   };
 
-  // Effet pour charger les enquêtes au montage
   useEffect(() => {
     fetchSurveys();
   }, [fetchSurveys]);
+
+  useEffect(() => {
+    if (showCreateForm && !editingSurvey) {
+      fetchReusableForms();
+    }
+  }, [showCreateForm, editingSurvey, fetchReusableForms]);
 
   // Gestionnaires d'événements pour le formulaire
   const handleInputChange = useCallback((field: keyof CreateSurveyData, value: any) => {
@@ -899,6 +993,146 @@ const PMSurveyManagement: React.FC = () => {
                   Ces objectifs permettront de suivre la progression de la campagne et des enquêteurs
                 </p>
               </div>
+
+              {/* Configuration du formulaire (création uniquement) */}
+              {!editingSurvey && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Formulaire de collecte</h3>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Choisissez comment associer un formulaire à cette nouvelle campagne.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <label className={`flex items-start gap-2 p-3 rounded-md border cursor-pointer transition-colors ${formSetupMode === 'later' ? 'border-blue-500 bg-white' : 'border-gray-200 bg-white/80'}`}>
+                      <input
+                        type="radio"
+                        name="formSetupMode"
+                        value="later"
+                        checked={formSetupMode === 'later'}
+                        onChange={() => setFormSetupMode('later')}
+                        className="mt-1"
+                        disabled={submitting}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">Plus tard</span>
+                        <span className="block text-xs text-gray-500">Créer le formulaire après, dans l’onglet Formulaires</span>
+                      </span>
+                    </label>
+
+                    <label className={`flex items-start gap-2 p-3 rounded-md border cursor-pointer transition-colors ${formSetupMode === 'reuse' ? 'border-blue-500 bg-white' : 'border-gray-200 bg-white/80'}`}>
+                      <input
+                        type="radio"
+                        name="formSetupMode"
+                        value="reuse"
+                        checked={formSetupMode === 'reuse'}
+                        onChange={() => setFormSetupMode('reuse')}
+                        className="mt-1"
+                        disabled={submitting}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">Réutiliser</span>
+                        <span className="block text-xs text-gray-500">Copier un formulaire d’une ancienne campagne</span>
+                      </span>
+                    </label>
+
+                    <label className={`flex items-start gap-2 p-3 rounded-md border cursor-pointer transition-colors ${formSetupMode === 'new' ? 'border-blue-500 bg-white' : 'border-gray-200 bg-white/80'}`}>
+                      <input
+                        type="radio"
+                        name="formSetupMode"
+                        value="new"
+                        checked={formSetupMode === 'new'}
+                        onChange={() => setFormSetupMode('new')}
+                        className="mt-1"
+                        disabled={submitting}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">Nouveau</span>
+                        <span className="block text-xs text-gray-500">Créer un formulaire vierge pour cette campagne</span>
+                      </span>
+                    </label>
+                  </div>
+
+                  {formSetupMode === 'reuse' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Formulaire à réutiliser *
+                        </label>
+                        {loadingReusableForms ? (
+                          <p className="text-sm text-gray-500">Chargement des formulaires...</p>
+                        ) : reusableForms.length === 0 ? (
+                          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                            Aucun formulaire disponible. Créez d’abord une campagne avec un formulaire, ou choisissez « Nouveau ».
+                          </p>
+                        ) : (
+                          <select
+                            value={sourceFormTemplateId}
+                            onChange={(e) => setSourceFormTemplateId(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            disabled={submitting}
+                          >
+                            <option value="">Sélectionner un formulaire</option>
+                            {reusableForms.map((form) => (
+                              <option key={form.id} value={form.id}>
+                                {form.name} — {form.survey?.title || 'Campagne'}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Nom du formulaire copié (optionnel)
+                        </label>
+                        <input
+                          type="text"
+                          value={newFormName}
+                          onChange={(e) => setNewFormName(e.target.value)}
+                          placeholder="Laisser vide pour un nom automatique"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {formSetupMode === 'new' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Nom du nouveau formulaire *
+                        </label>
+                        <input
+                          type="text"
+                          value={newFormName}
+                          onChange={(e) => setNewFormName(e.target.value)}
+                          placeholder="Ex: Enquête ménages 2026"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={submitting}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Description du formulaire
+                        </label>
+                        <input
+                          type="text"
+                          value={newFormDescription}
+                          onChange={(e) => setNewFormDescription(e.target.value)}
+                          placeholder="Optionnel"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={submitting}
+                        />
+                      </div>
+                      <p className="md:col-span-2 text-xs text-gray-500">
+                        Un formulaire de base sera créé. Vous pourrez le personnaliser dans l’onglet « Formulaires ».
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Description */}
               <div>

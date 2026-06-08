@@ -354,27 +354,52 @@ const AdminCampaignData: React.FC<AdminCampaignDataProps> = ({ onBack }) => {
   };
 
   const exportToCSV = async () => {
-    if (!selectedCampaign || responses.length === 0) {
-      toast.warning('Aucune donnée à exporter');
+    if (!selectedCampaign) {
+      toast.warning('Veuillez sélectionner une campagne');
       return;
     }
 
     setExporting(true);
     try {
-      const campaign = campaigns.find(c => c.id === selectedCampaign);
-      const fileName = `donnees_campagne_${campaign?.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'campagne'}_${new Date().toISOString().split('T')[0]}`;
-      
-      const enquetes = convertResponsesToEnquetes(responses);
-      const success = exportEnquetesToExcel(enquetes, fileName);
-      
-      if (success) {
-        toast.success('Export Excel généré avec succès');
-      } else {
-        toast.error('Erreur lors de l\'export Excel');
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('Vous devez être connecté');
+        return;
       }
-    } catch (error) {
+
+      const response = await fetch(
+        `${environment.apiBaseUrl}/records/campaign/${selectedCampaign}/export`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erreur lors de l\'export');
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+
+      const campaign = campaigns.find((c) => c.id === selectedCampaign);
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let fileName = `donnees_campagne_${campaign?.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'campagne'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/);
+        if (match) fileName = match[1];
+      }
+
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      toast.success('Export Excel complet généré avec succès');
+    } catch (error: any) {
       console.error('Erreur lors de l\'export:', error);
-      toast.error('Erreur lors de l\'export Excel');
+      toast.error(error.message || 'Erreur lors de l\'export Excel');
     } finally {
       setExporting(false);
     }
@@ -544,7 +569,7 @@ const AdminCampaignData: React.FC<AdminCampaignDataProps> = ({ onBack }) => {
               <div className="flex gap-2">
                 <button
                   onClick={exportToCSV}
-                  disabled={exporting || responses.length === 0}
+                  disabled={exporting || totalResponses === 0}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors duration-200 hover:scale-105 active:scale-95"
                 >
                   {exporting ? (

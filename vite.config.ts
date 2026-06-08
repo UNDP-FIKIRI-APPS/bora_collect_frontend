@@ -37,9 +37,6 @@ export default defineConfig({
             if (id.includes('chart.js') || id.includes('react-chartjs-2')) {
               return 'vendor-charts';
             }
-            if (id.includes('leaflet') || id.includes('react-leaflet')) {
-              return 'vendor-maps';
-            }
             if (id.includes('xlsx')) {
               return 'vendor-excel';
             }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
 
@@ -30,6 +30,8 @@ const Login = () => {
       // Utilisation du nouveau service API (skipAuth car c'est le login)
       const data = await enhancedApiService.post<{
         access_token: string;
+        refresh_token?: string;
+        session_id?: string;
         user: any;
       }>(loginEndpoint, { email: username, password }, {
         skipAuth: true, // Pas de token pour le login
@@ -82,8 +84,11 @@ const Login = () => {
         // Stocker dans l'ordre : currentUserId d'abord, puis token, puis user
         localStorage.setItem('currentUserId', newUserId);
         localStorage.setItem('token', data.access_token);
+        if (data.refresh_token) {
+          localStorage.setItem('refresh_token', data.refresh_token);
+        }
         localStorage.setItem('user', JSON.stringify(data.user));
-        localStorage.setItem('sessionId', sessionId);
+        localStorage.setItem('sessionId', data.session_id || sessionId);
         
         // Nettoyer forceLogout après un délai pour éviter les conflits
         // Mais seulement si on a déclenché un forceLogout
@@ -150,7 +155,7 @@ const Login = () => {
         <div className="text-center mb-6 sm:mb-8">
           <div className="flex justify-center mb-4">
             <Link to="/" className="cursor-pointer hover:opacity-80 transition-opacity">
-              <img src={logo2} alt="Logo" className="h-16 w-16 sm:h-20 sm:w-20 object-contain" />
+              <img src={APP_LOGO_URL} alt="Logo Fikiri Collect" className="h-16 w-auto sm:h-20 object-contain" />
             </Link>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">FikiriCollect</h1>

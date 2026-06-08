@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { environment } from '../config/environment';
 import { localStorageService } from '../services/localStorageService';
 import LocationInput from '../components/LocationInput';
+import { evaluateConditional, extractFieldsFromFormSchema } from '../utils/formSchema';
 
 interface Campaign {
   id: string;
@@ -47,55 +48,8 @@ const ControllerCampaignForms: React.FC = () => {
 
   const resetGeolocation = () => setGeolocation({ ...initialGeolocationState });
 
-  // Fonction pour extraire les champs de la structure imbriquée (optimisée)
   const extractFieldsFromForm = useCallback((fields: any): any[] => {
-    if (!fields) return [];
-    
-    // Si fields est une chaîne JSON, la parser
-    let parsedFields = fields;
-    if (typeof fields === 'string') {
-      try {
-        parsedFields = JSON.parse(fields);
-      } catch (error) {
-        // Réduire les logs pour améliorer les performances sur appareils mobiles
-        // Ne logger que si nécessaire pour le débogage
-        return [];
-      }
-    }
-    
-    if (!parsedFields || typeof parsedFields !== 'object') return [];
-    
-    const extractedFields: any[] = [];
-    
-    // Parcourir les propriétés principales (identification, modeCuisson, etc.)
-    Object.keys(parsedFields).forEach(sectionKey => {
-      const section = parsedFields[sectionKey];
-      if (section && typeof section === 'object' && section.fields) {
-        // Parcourir les champs de chaque section
-        Object.keys(section.fields).forEach(fieldKey => {
-          const field = section.fields[fieldKey];
-          extractedFields.push({
-            id: `${sectionKey}.${fieldKey}`,
-            label: field.label || field.title || fieldKey,
-            type: field.type || 'text',
-            required: field.required || false,
-            placeholder: field.placeholder || '',
-            options: field.options || field.enum || [],
-            min: field.min || field.minimum,
-            max: field.max || field.maximum,
-            section: sectionKey,
-            sectionLabel: section.label || section.title || sectionKey,
-            conditional: field.conditional || null,
-            rankingOptions: field.rankingOptions || null
-          });
-        });
-      }
-    });
-    
-    // Réduire les logs pour améliorer les performances
-    // Les logs peuvent ralentir les appareils avec peu de mémoire
-    
-    return extractedFields;
+    return extractFieldsFromFormSchema(fields);
   }, []);
   
   // Mémoriser les champs extraits pour éviter de recalculer à chaque rendu
@@ -107,23 +61,19 @@ const ControllerCampaignForms: React.FC = () => {
   // Fonction pour vérifier si un champ doit être affiché selon les conditions (déclarée avant utilisation)
   const shouldShowField = useCallback((field: any): boolean => {
     if (!field.conditional) return true;
-    
-    const { field: conditionalField, value: conditionalValue, operator } = field.conditional;
-    
-    // Construire l'ID complet du champ conditionnel
-    const conditionalFieldId = conditionalField.includes('.') ? conditionalField : `${field.section}.${conditionalField}`;
-    const fieldValue = formData[conditionalFieldId];
-    
-    switch (operator) {
-      case 'equals':
-        return fieldValue === conditionalValue;
-      case 'not_equals':
-        return fieldValue !== conditionalValue;
-      case 'contains':
-        return Array.isArray(fieldValue) ? fieldValue.includes(conditionalValue) : fieldValue?.includes(conditionalValue);
-      default:
-        return true;
-    }
+    const rule = field.conditional;
+    const fieldId =
+      rule.fieldId ||
+      (rule.field?.includes('.') ? rule.field : `${field.section}.${rule.field}`);
+    return evaluateConditional(
+      {
+        fieldId,
+        operator: rule.operator || 'equals',
+        value: rule.value,
+        action: rule.action || 'show',
+      },
+      formData,
+    );
   }, [formData]);
   
   // Mémoriser les sections groupées pour éviter de recalculer à chaque rendu

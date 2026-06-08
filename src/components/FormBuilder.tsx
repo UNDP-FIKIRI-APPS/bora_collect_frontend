@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { environment } from '../config/environment';
 import ConfirmationModal from './ConfirmationModal';
+import TallyFormBuilder from './form-builder/TallyFormBuilder';
 
 export interface FormField {
   id: string;
@@ -174,8 +175,7 @@ const FormBuilder: React.FC = () => {
           ...form,
           createdAt: new Date(form.createdAt),
           updatedAt: new Date(form.updatedAt),
-          // Normaliser le champ fields pour l'éditeur
-          fields: normalizeFormFields(form.fields),
+          fields: form.fields,
         }));
         setForms(formsWithDates);
       }
@@ -1304,7 +1304,27 @@ const FormBuilder: React.FC = () => {
 
       {/* Modals */}
       {showSurveySelector && <SurveySelector />}
-      {showBuilder && currentForm && <FormBuilderInterface />}
+      {showBuilder && currentForm && (
+        <TallyFormBuilder
+          formId={currentForm.id.startsWith('temp_') ? undefined : currentForm.id}
+          surveyId={currentForm.surveyId}
+          surveyTitle={currentForm.survey?.title || 'Campagne'}
+          initialName={currentForm.name}
+          initialDescription={currentForm.description}
+          initialFields={currentForm.fields}
+          isPublished={(currentForm as any).isPublished}
+          isVisibleToControllers={currentForm.isVisibleToControllers}
+          onClose={() => {
+            setShowBuilder(false);
+            setCurrentForm(null);
+          }}
+          onSaved={async () => {
+            await fetchExistingForms();
+            setShowBuilder(false);
+            setCurrentForm(null);
+          }}
+        />
+      )}
 
       {/* Modal de confirmation pour la suppression de formulaire */}
       <ConfirmationModal

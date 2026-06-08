@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 import FormBuilder from '../components/FormBuilder';
 import PNUDFooter from '../components/PNUDFooter';
 import NotificationPanel from '../components/NotificationPanel';
@@ -14,7 +14,6 @@ const PMApprovalRequests = lazy(() => import('./pm/PMApprovalRequests'));
 const PMFormBuilder = lazy(() => import('./pm/PMFormBuilder'));
 const PMApplicationReview = lazy(() => import('./pm/PMApplicationReview'));
 const PMDemands = lazy(() => import('./pm/PMDemands'));
-const PMEnumeratorRequests = lazy(() => import('./PMEnumeratorRequests'));
 const PMSettings = lazy(() => import('./pm/PMSettings'));
 const PMValidatedForms = lazy(() => import('./pm/PMValidatedForms'));
 
@@ -218,7 +217,7 @@ const ProjectManagerHome = () => {
             {/* Logo et titre */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <div className="relative">
-                <img src={logo2} alt="Logo" className="h-8 sm:h-10 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
+                <img src={APP_LOGO_URL} alt="Logo Fikiri Collect" className="h-8 sm:h-10 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
                 <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               </div>
               <div className="flex flex-col">

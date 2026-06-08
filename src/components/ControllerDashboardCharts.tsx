@@ -1,30 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  PointElement,
-  LineElement,
-} from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+import { Bar } from '../lib/chartSetup';
 import { environment } from '../config/environment';
 import { getChartColor, CompatibleColors } from '../utils/colors';
 import enhancedApiService from '../services/enhancedApiService';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  PointElement,
-  LineElement
-);
 
 interface ControllerDashboardChartsProps {
   personalStats?: any;

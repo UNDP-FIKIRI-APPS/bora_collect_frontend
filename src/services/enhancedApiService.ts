@@ -58,35 +58,42 @@ class EnhancedApiService {
     return localStorage.getItem('token');
   }
 
-  /**
-   * Sauvegarde le token
-   */
-  private setToken(token: string): void {
-    localStorage.setItem('token', token);
+  private getRefreshToken(): string | null {
+    return localStorage.getItem('refresh_token');
   }
 
   /**
-   * Rafraîchit le token automatiquement
+   * Sauvegarde les tokens de session
+   */
+  private setTokens(accessToken: string, refreshToken?: string, sessionId?: string): void {
+    localStorage.setItem('token', accessToken);
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+    }
+    if (sessionId) {
+      localStorage.setItem('sessionId', sessionId);
+    }
+  }
+
+  /**
+   * Rafraîchit le token automatiquement via refresh_token
    */
   private async refreshToken(): Promise<string> {
-    // Si une requête de refresh est déjà en cours, attendre qu'elle se termine
     if (this.refreshTokenPromise) {
       return this.refreshTokenPromise;
     }
 
     this.refreshTokenPromise = (async () => {
       try {
-        const currentToken = this.getToken();
-        if (!currentToken) {
-          throw new Error('No token to refresh');
+        const storedRefreshToken = this.getRefreshToken();
+        if (!storedRefreshToken) {
+          throw new Error('No refresh token available');
         }
 
         const response = await fetch(`${this.baseURL}/auth/refresh`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentToken}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: storedRefreshToken }),
         });
 
         if (!response.ok) {
@@ -95,15 +102,14 @@ class EnhancedApiService {
 
         const data = await response.json();
         const newToken = data.access_token || data.token;
-        
+
         if (newToken) {
-          this.setToken(newToken);
+          this.setTokens(newToken, data.refresh_token, data.session_id);
           return newToken;
         }
 
         throw new Error('No token in refresh response');
       } catch (error) {
-        // Si le refresh échoue, déconnecter l'utilisateur
         this.handleAuthError();
         throw error;
       } finally {
@@ -115,12 +121,37 @@ class EnhancedApiService {
   }
 
   /**
+   * Déconnexion côté serveur puis nettoyage local
+   */
+  async logout(): Promise<void> {
+    const token = this.getToken();
+    const refreshToken = this.getRefreshToken();
+    try {
+      if (token) {
+        await fetch(`${this.baseURL}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      }
+    } catch {
+      // Nettoyage local même si l'API échoue
+    }
+    this.handleAuthError();
+  }
+
+  /**
    * Gère les erreurs d'authentification
    */
   private handleAuthError(): void {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('sessionId');
+    localStorage.removeItem('currentUserId');
     
     // Rediriger vers la page de login
     if (window.location.pathname !== '/login') {

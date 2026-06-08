@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 import { environment } from '../config/environment';
 import { getCitiesByProvince, getCommunesByCity } from '../data/citiesData';
 import { getQuartiersByCommune } from '../data/quartiersData';
@@ -231,8 +231,8 @@ const CreateAccount = () => {
         <div className="text-center mb-8">
           <Link to="/" className="inline-block cursor-pointer hover:opacity-80 transition-opacity">
             <img 
-              src={logo2} 
-              alt="Logo FikiriCollect" 
+              src={APP_LOGO_URL}
+              alt="Logo Fikiri Collect" 
               className="mx-auto h-16 w-auto mb-4"
             />
           </Link>

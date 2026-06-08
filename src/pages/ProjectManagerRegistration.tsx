@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 import ProjectManagerForm from '../components/ProjectManagerForm';
 
 const ProjectManagerRegistration: React.FC = () => {
@@ -11,7 +11,7 @@ const ProjectManagerRegistration: React.FC = () => {
       <div className="max-w-4xl w-full space-y-8">
         <div className="text-center">
           <Link to="/" className="inline-block cursor-pointer hover:opacity-80 transition-opacity">
-            <img className="mx-auto h-20 w-auto" src={logo2} alt="Logo" />
+            <img className="mx-auto h-20 w-auto object-contain" src={APP_LOGO_URL} alt="Logo Fikiri Collect" />
           </Link>
           <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
             Inscription Project Manager

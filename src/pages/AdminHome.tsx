@@ -1,6 +1,6 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 import AdminDashboardCharts from '../components/AdminDashboardCharts';
 import CarteRDCSVG from '../components/CarteRDCSVG';
 import PNUDFooter from '../components/PNUDFooter';
@@ -9,7 +9,6 @@ import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
 
 // Lazy loading pour toutes les pages admin
-const AdminDashboard = lazy(() => import('./AdminDashboard'));
 const AdminUserManagement = lazy(() => import('./AdminUserManagement'));
 const AdminCampaignManagement = lazy(() => import('./AdminCampaignManagement'));
 const AdminPendingApprovals = lazy(() => import('./AdminPendingApprovals'));
@@ -17,6 +16,10 @@ const AdminPMRequests = lazy(() => import('./AdminPMRequests'));
 const AdminCreateProjectManager = lazy(() => import('./AdminCreateProjectManager'));
 const AdminCampaignData = lazy(() => import('./AdminCampaignData'));
 const AdminSettings = lazy(() => import('./AdminSettings'));
+const ExportsStats = lazy(() => import('./ExportsStats'));
+const AdminDeletedUsers = lazy(() => import('./AdminDeletedUsers'));
+const AdminSurveyPublication = lazy(() => import('./AdminSurveyPublication'));
+const AdminCandidatures = lazy(() => import('./AdminCandidatures'));
 
 // Composant de chargement pour les pages lazy
 const PageLoadingFallback = () => (
@@ -29,7 +32,6 @@ const PageLoadingFallback = () => (
 );
 
 export function DashboardAdmin() {
-  const [users, setUsers] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [flippedCards, setFlippedCards] = useState<{ [key: string]: boolean }>({});
@@ -42,6 +44,7 @@ export function DashboardAdmin() {
       controller: 0,
       supervisor: 0,
       analyst: 0,
+      projectManager: 0,
     }
   });
   const [campaignStats, setCampaignStats] = useState({
@@ -75,31 +78,21 @@ export function DashboardAdmin() {
     }));
   };
 
-  // Récupérer la liste des utilisateurs
-  const fetchUsers = async () => {
+  const fetchDashboardStats = async () => {
     setLoading(true);
     try {
-      // Utilisation du nouveau service API
-      const responseData = await enhancedApiService.get<any>('/users', {
-        skipCache: true,
-      });
-      
-      // L'API peut retourner un objet avec { data: [...], pagination: {...} } ou directement un tableau
-      const usersArray = Array.isArray(responseData) ? responseData : (responseData?.data || []);
-      
-      setUsers(usersArray);
-      
-      // Calculer les statistiques des utilisateurs
+      const data = await enhancedApiService.get<any>('/users/dashboard-stats', { skipCache: true });
       setUserStats({
-        totalUsers: usersArray.length,
-        activeUsers: usersArray.filter((u: any) => u.status === 'ACTIVE').length,
-        pendingApprovals: 0, // Sera mis à jour avec les vraies données
+        totalUsers: data.total || 0,
+        activeUsers: data.active || 0,
+        pendingApprovals: data.pending || 0,
         usersByRole: {
-          admin: usersArray.filter((u: any) => u.role === 'ADMIN' && u.status === 'ACTIVE').length,
-          controller: usersArray.filter((u: any) => u.role === 'CONTROLLER' && u.status === 'ACTIVE').length,
-          supervisor: 0, // Rôle SUPERVISOR supprimé
-          analyst: usersArray.filter((u: any) => u.role === 'ANALYST' && u.status === 'ACTIVE').length,
-        }
+          admin: data.usersByRole?.admin || 0,
+          controller: data.usersByRole?.controller || 0,
+          supervisor: 0,
+          analyst: data.usersByRole?.analyst || 0,
+          projectManager: data.usersByRole?.projectManager || 0,
+        },
       });
     } catch (err: any) {
       console.error('Erreur:', err.message);
@@ -109,7 +102,7 @@ export function DashboardAdmin() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchDashboardStats();
     fetchCampaignStats();
   }, []);
 
@@ -161,29 +154,6 @@ export function DashboardAdmin() {
       console.error('Erreur lors du chargement des statistiques de campagnes:', error);
     }
   };
-
-  // Charger les demandes d'approbation en attente
-  useEffect(() => {
-    const fetchPendingApprovals = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        // Utilisation du nouveau service API
-        const data = await enhancedApiService.get<any>('/users/approval-stats', {
-          skipCache: true,
-        });
-        setUserStats(prev => ({
-          ...prev,
-          pendingApprovals: data.pending || 0
-        }));
-      } catch (error) {
-        console.error('Erreur lors du chargement des demandes d\'approbation:', error);
-      }
-    };
-
-    fetchPendingApprovals();
-  }, []);
 
   return (
     <>
@@ -242,10 +212,10 @@ export function DashboardAdmin() {
                   )}
                 </div>
                 <div className="text-xs">
-                  <div>Project Managers: {loading ? (
+                  <div>PM: {loading ? (
                     <span className="animate-pulse bg-white/20 rounded w-8 h-4 inline-block"></span>
                   ) : (
-                    <span className="animate-bounce">{userStats.usersByRole.admin}</span>
+                    <span className="animate-bounce">{userStats.usersByRole.projectManager}</span>
                   )}</div>
                   <div>Enquêteurs: {loading ? (
                     <span className="animate-pulse bg-white/20 rounded w-8 h-4 inline-block"></span>
@@ -319,48 +289,18 @@ export function DashboardAdmin() {
         </div>
       </div>
       
-      {/* Graphiques */}
-      {loading ? (
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2 text-gray-600">Chargement des utilisateurs...</p>
-        </div>
-      ) : (
-        <AdminDashboardCharts users={users} />
-      )}
+      <AdminDashboardCharts />
     </>
   );
 }
 
 export default function AdminHome() {
   const [user, setUser] = useState<any>(null);
-  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pendingCounts, setPendingCounts] = useState({ total: 0, pendingApplications: 0, pendingPMRequests: 0, pendingRecords: 0 });
   const navigate = useNavigate();
-  const [view, setView] = useState('dashboard'); // 'dashboard', 'users', 'campaigns', 'pending-approvals', 'pm-requests', 'create-pm', 'campaign-data', 'settings'
-
-  // Fonction pour charger les utilisateurs
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      // Utilisation du nouveau service API
-      const responseData = await enhancedApiService.get<any>('/users', {
-        skipCache: true,
-      });
-      
-      // L'API peut retourner un objet avec { data: [...], pagination: {...} } ou directement un tableau
-      const usersArray = Array.isArray(responseData) ? responseData : (responseData?.data || []);
-      
-      setUsers(usersArray);
-    } catch (err: any) {
-      console.error('Erreur:', err.message);
-      setUsers([]); // S'assurer que users est toujours un tableau
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [view, setView] = useState('dashboard'); // dashboard, users, campaigns, pending-approvals, pm-requests, create-pm, campaign-data, survey-publication, candidatures, exports, deleted-users, settings
 
   // Fonction pour charger les compteurs de demandes en attente
   const fetchPendingCounts = async () => {
@@ -405,7 +345,6 @@ export default function AdminHome() {
     };
 
     loadUserData();
-    fetchUsers();
     fetchPendingCounts();
 
     // Refresh automatique supprimé - les compteurs seront mis à jour uniquement via les événements
@@ -468,7 +407,7 @@ export default function AdminHome() {
           {/* Logo et titre */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <div className="relative">
-                <img src={logo2} alt="Logo" className="h-8 sm:h-10 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
+                <img src={APP_LOGO_URL} alt="Logo Fikiri Collect" className="h-8 sm:h-10 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
                 <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               </div>
               <div className="flex flex-col">
@@ -582,6 +521,49 @@ export default function AdminHome() {
                   <span className="hidden lg:inline">Données Campagnes</span>
                   <span className="lg:hidden">Données</span>
                 </div>
+          </button>
+          <button 
+                onClick={() => handleViewChange('survey-publication')} 
+                className={`px-1.5 lg:px-2 py-2 rounded-lg font-semibold text-xs lg:text-sm transition-all duration-200 whitespace-nowrap ${
+                  view === 'survey-publication' 
+                    ? 'bg-white text-blue-900 shadow-lg transform scale-105' 
+                    : 'text-white hover:bg-blue-700/50 hover:scale-105'
+                }`}
+              >
+                <span className="hidden lg:inline">Publication</span>
+                <span className="lg:hidden">Pub.</span>
+          </button>
+          <button 
+                onClick={() => handleViewChange('candidatures')} 
+                className={`px-1.5 lg:px-2 py-2 rounded-lg font-semibold text-xs lg:text-sm transition-all duration-200 whitespace-nowrap ${
+                  view === 'candidatures' 
+                    ? 'bg-white text-blue-900 shadow-lg transform scale-105' 
+                    : 'text-white hover:bg-blue-700/50 hover:scale-105'
+                }`}
+              >
+                <span className="hidden lg:inline">Candidatures</span>
+                <span className="lg:hidden">Cand.</span>
+          </button>
+          <button 
+                onClick={() => handleViewChange('exports')} 
+                className={`px-1.5 lg:px-2 py-2 rounded-lg font-semibold text-xs lg:text-sm transition-all duration-200 whitespace-nowrap ${
+                  view === 'exports' 
+                    ? 'bg-white text-blue-900 shadow-lg transform scale-105' 
+                    : 'text-white hover:bg-blue-700/50 hover:scale-105'
+                }`}
+              >
+                Exports
+          </button>
+          <button 
+                onClick={() => handleViewChange('deleted-users')} 
+                className={`px-1.5 lg:px-2 py-2 rounded-lg font-semibold text-xs lg:text-sm transition-all duration-200 whitespace-nowrap ${
+                  view === 'deleted-users' 
+                    ? 'bg-white text-blue-900 shadow-lg transform scale-105' 
+                    : 'text-white hover:bg-blue-700/50 hover:scale-105'
+                }`}
+              >
+                <span className="hidden lg:inline">Supprimés</span>
+                <span className="lg:hidden">Suppr.</span>
           </button>
           <button 
                 onClick={() => handleViewChange('settings')} 
@@ -712,6 +694,10 @@ export default function AdminHome() {
                   Données Campagnes
                 </div>
             </button>
+            <button onClick={() => handleViewChange('survey-publication')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${view === 'survey-publication' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Publication</button>
+            <button onClick={() => handleViewChange('candidatures')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${view === 'candidatures' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Candidatures</button>
+            <button onClick={() => handleViewChange('exports')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${view === 'exports' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Exports</button>
+            <button onClick={() => handleViewChange('deleted-users')} className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${view === 'deleted-users' ? 'bg-white text-blue-900 shadow-lg' : 'text-white hover:bg-blue-700/50'}`}>Utilisateurs supprimés</button>
             <button 
                 onClick={() => handleViewChange('settings')} 
                 className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 ${
@@ -808,6 +794,26 @@ export default function AdminHome() {
         {view === 'campaign-data' && (
           <Suspense fallback={<PageLoadingFallback />}>
             <AdminCampaignData />
+          </Suspense>
+        )}
+        {view === 'survey-publication' && (
+          <Suspense fallback={<PageLoadingFallback />}>
+            <AdminSurveyPublication />
+          </Suspense>
+        )}
+        {view === 'candidatures' && (
+          <Suspense fallback={<PageLoadingFallback />}>
+            <AdminCandidatures />
+          </Suspense>
+        )}
+        {view === 'exports' && (
+          <Suspense fallback={<PageLoadingFallback />}>
+            <ExportsStats />
+          </Suspense>
+        )}
+        {view === 'deleted-users' && (
+          <Suspense fallback={<PageLoadingFallback />}>
+            <AdminDeletedUsers />
           </Suspense>
         )}
         {view === 'settings' && (

@@ -91,7 +91,6 @@ const PMValidatedForms: React.FC = () => {
 
   useEffect(() => {
     fetchValidatedForms();
-    fetchCampaigns();
   }, []);
 
   useEffect(() => {
@@ -115,32 +114,6 @@ const PMValidatedForms: React.FC = () => {
       fetchEnumeratorStats(selectedCampaignId);
     }
   }, [selectedCampaignId, selectedEnumeratorId]);
-
-  // Fonction pour récupérer les campagnes
-  const fetchCampaigns = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      // Utilisation du nouveau service API
-      const data = await enhancedApiService.get<any[]>('/surveys/pm-validated-forms', {
-        skipCache: true,
-      });
-      
-      // Extraire les campagnes uniques
-      const uniqueCampaigns = Array.from(
-        new Map(data.map((form: ValidatedForm) => [form.surveyId, form.survey])).values()
-      ).filter(Boolean) as Array<{ id: string; title: string; description?: string }>;
-      setCampaigns(uniqueCampaigns);
-      
-      // Sélectionner automatiquement la première campagne si disponible
-      if (uniqueCampaigns.length > 0 && !selectedCampaignId) {
-        setSelectedCampaignId(uniqueCampaigns[0].id);
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement des campagnes:', error);
-    }
-  };
 
   // Fonction pour récupérer les statistiques des enquêteurs par campagne
   const fetchEnumeratorStats = async (campaignId: string) => {
@@ -196,6 +169,14 @@ const PMValidatedForms: React.FC = () => {
       const data = await enhancedApiService.get<any[]>('/surveys/pm-validated-forms');
       console.log('✅ Formulaires validés récupérés:', data);
       setValidatedForms(data);
+
+      const uniqueCampaigns = Array.from(
+        new Map(data.map((form: ValidatedForm) => [form.surveyId, form.survey])).values()
+      ).filter(Boolean) as Array<{ id: string; title: string; description?: string }>;
+      setCampaigns(uniqueCampaigns);
+      if (uniqueCampaigns.length > 0 && !selectedCampaignId) {
+        setSelectedCampaignId(uniqueCampaigns[0].id);
+      }
     } catch (error) {
       console.error('❌ Erreur lors du chargement des formulaires validés:', error);
     } finally {

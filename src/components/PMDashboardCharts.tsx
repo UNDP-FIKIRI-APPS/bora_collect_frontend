@@ -1,25 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+import { Bar } from '../lib/chartSetup';
 import { environment } from '../config/environment';
 import { getChartColor, CompatibleColors } from '../utils/colors';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-);
 
 interface PMDashboardChartsProps {
   personalStats?: any;

@@ -1,5 +1,41 @@
+# Dépendances
+node_modules/
+
+# Build Vite
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# Variables d'environnement et secrets (ne jamais versionner)
+.env
+.env.*
+*.env
+production.env
+staging.env
+development.env
+local.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.test
+.env.backup
+.env.*.backup
+.env.safe
+.env.example
+.env.sample
+.env.template
+*.local
+
+# Credentials
+credentials.json
+credentials.*.json
+*.pem
+*.key
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,16 +43,21 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Tests
+coverage/
+.nyc_output/
 
-# Editor directories and files
+# Cache outils
+.cache/
+.vite/
+.eslintcache
+
+# OS & éditeurs
+.DS_Store
+Thumbs.db
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj

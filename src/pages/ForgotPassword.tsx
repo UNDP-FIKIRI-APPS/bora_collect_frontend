@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, KeyRound, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
 
@@ -121,7 +121,7 @@ const ForgotPassword: React.FC = () => {
         {/* Logo */}
         <div className="text-center mb-6">
           <Link to="/" className="inline-block">
-            <img src={logo2} alt="Logo" className="h-16 w-16 mx-auto object-contain" />
+            <img src={APP_LOGO_URL} alt="Logo Fikiri Collect" className="h-16 w-auto mx-auto object-contain" />
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 mt-4">
             {step === 'email' && 'Mot de passe oublié'}

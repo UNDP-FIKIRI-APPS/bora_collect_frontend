@@ -155,36 +155,44 @@ const AdminSurveyPublication: React.FC = () => {
     return token;
   }, []);
 
-  // Fonction pour recharger le token si nécessaire
   const refreshTokenIfNeeded = useCallback(async (): Promise<string | null> => {
     const token = getAuthToken();
     if (token) return token;
 
-    // Si pas de token, essayer de se reconnecter automatiquement
-    const user = localStorage.getItem('user');
-    if (user) {
-      try {
-        const userData = JSON.parse(user);
-        const response = await fetch(`${apiBaseUrl}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: userData.email,
-            password: 'admin123' // En production, il faudrait stocker le mot de passe de manière sécurisée
-          })
-        });
-
-        if (response.ok) {
-          const loginData = await response.json();
-          localStorage.setItem('token', loginData.access_token);
-          toast.success('Session renouvelée automatiquement');
-          return loginData.access_token;
-        }
-      } catch (error) {
-        console.error('Erreur lors du renouvellement automatique:', error);
-      }
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      toast.error('Session expirée. Veuillez vous reconnecter.');
+      localStorage.removeItem('user');
+      return null;
     }
 
+    try {
+      const response = await fetch(`${apiBaseUrl}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
+      if (response.ok) {
+        const loginData = await response.json();
+        localStorage.setItem('token', loginData.access_token);
+        if (loginData.refresh_token) {
+          localStorage.setItem('refresh_token', loginData.refresh_token);
+        }
+        if (loginData.session_id) {
+          localStorage.setItem('sessionId', loginData.session_id);
+        }
+        toast.success('Session renouvelée');
+        return loginData.access_token;
+      }
+    } catch (error) {
+      console.error('Erreur lors du renouvellement de session:', error);
+    }
+
+    toast.error('Session expirée. Veuillez vous reconnecter.');
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
     return null;
   }, [apiBaseUrl, getAuthToken]);
 

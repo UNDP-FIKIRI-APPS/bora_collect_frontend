@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { CheckCircle, AlertCircle, Loader2, Send, ArrowLeft } from 'lucide-react';
 import { environment } from '../config/environment';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 import enhancedApiService from '../services/enhancedApiService';
 import { getCitiesByProvince, getCommunesByCity } from '../data/citiesData';
 import { getQuartiersByCommune } from '../data/quartiersData';
+import PublicFormSchemaView, { usesFormSchemaV1 } from './PublicFormSchemaView';
 
 interface FormField {
   id: string;
@@ -100,7 +101,11 @@ const parseFormTemplate = (template: FormTemplate | null): FormTemplate | null =
   return { ...template, fields: Array.isArray(fields) ? fields : [] };
 };
 
-const PublicFormPage = () => {
+interface PublicFormPageProps {
+  embedMode?: boolean;
+}
+
+const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
   const { token } = useParams<{ token: string }>();
   const [linkData, setLinkData] = useState<LinkData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -885,14 +890,44 @@ const PublicFormPage = () => {
           <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-slate-900 mb-2">Lien invalide</h1>
           <p className="text-slate-600 mb-6">{error}</p>
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Retour à l'accueil
-          </Link>
+          {!embedMode && (
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Retour à l'accueil
+            </Link>
+          )}
         </div>
+      </div>
+    );
+  }
+
+  if (linkData && usesFormSchemaV1(linkData as any) && token) {
+    return (
+      <div className={embedMode ? 'bg-white min-h-screen' : 'min-h-screen bg-gradient-to-b from-blue-50 via-white to-blue-50'}>
+        {!embedMode && (
+          <header className="bg-white border-b border-slate-100 sticky top-0 z-10">
+            <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+              <Link to="/" className="flex items-center gap-3">
+                <img src={APP_LOGO_URL} alt="Fikiri Collect" className="h-10 w-auto object-contain" />
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-blue-600">Fikiri Collect</p>
+                  <p className="text-sm font-semibold text-slate-900">Formulaire public</p>
+                </div>
+              </Link>
+            </div>
+          </header>
+        )}
+        <main className={embedMode ? 'p-2' : 'max-w-2xl mx-auto px-4 py-8'}>
+          <PublicFormSchemaView token={token} linkData={linkData as any} embedMode={embedMode} />
+        </main>
+        {!embedMode && (
+          <footer className="border-t border-slate-100 bg-white mt-12 py-6 text-center text-sm text-slate-500">
+            <p>© {new Date().getFullYear()} Fikiri Collect</p>
+          </footer>
+        )}
       </div>
     );
   }
@@ -930,7 +965,7 @@ const PublicFormPage = () => {
       <header className="bg-white border-b border-slate-100 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
-            <img src={logo2} alt="Fikiri Collect" className="h-10 w-10 rounded-full object-cover" />
+            <img src={APP_LOGO_URL} alt="Fikiri Collect" className="h-10 w-auto object-contain" />
             <div>
               <p className="text-xs uppercase tracking-widest text-blue-600">Fikiri Collect</p>
               <p className="text-sm font-semibold text-slate-900">Formulaire public</p>

@@ -1,7 +1,6 @@
 // Service Worker pour PWA - Cache offline
-const CACHE_NAME = 'eus-platform-v1';
-const STATIC_CACHE_NAME = 'eus-static-v1';
-const API_CACHE_NAME = 'eus-api-v1';
+const CACHE_NAME = 'fikiri-collect-v2';
+const STATIC_CACHE_NAME = 'fikiri-static-v2';
 
 // Assets à mettre en cache immédiatement
 const STATIC_ASSETS = [
@@ -31,8 +30,7 @@ self.addEventListener('activate', (event) => {
         cacheNames
           .filter((name) => {
             return name !== CACHE_NAME && 
-                   name !== STATIC_CACHE_NAME && 
-                   name !== API_CACHE_NAME;
+                   name !== STATIC_CACHE_NAME;
           })
           .map((name) => {
             console.log('[SW] Deleting old cache:', name);
@@ -54,7 +52,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stratégie pour les assets statiques (CSS, JS, images)
+  // Assets statiques : Network First (fraîcheur prioritaire)
   if (
     url.pathname.startsWith('/assets/') ||
     url.pathname.endsWith('.js') ||
@@ -67,12 +65,8 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.woff2')
   ) {
     event.respondWith(
-      caches.match(request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        return fetch(request).then((response) => {
-          // Ne mettre en cache que les réponses valides
+      fetch(request)
+        .then((response) => {
           if (response.status === 200) {
             const responseToCache = response.clone();
             caches.open(STATIC_CACHE_NAME).then((cache) => {
@@ -80,44 +74,14 @@ self.addEventListener('fetch', (event) => {
             });
           }
           return response;
-        });
-      })
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }
 
-  // Stratégie pour les requêtes API (Network First avec cache fallback)
-  if (url.pathname.startsWith('/api/') || url.origin.includes('api')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Mettre en cache seulement les réponses GET réussies
-          if (response.status === 200 && request.method === 'GET') {
-            const responseToCache = response.clone();
-            caches.open(API_CACHE_NAME).then((cache) => {
-              // Cache avec TTL de 5 minutes pour les API
-              cache.put(request, responseToCache);
-            });
-          }
-          return response;
-        })
-        .catch(() => {
-          // En cas d'erreur réseau, retourner depuis le cache
-          return caches.match(request).then((cachedResponse) => {
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-            // Retourner une réponse d'erreur si pas de cache
-            return new Response(
-              JSON.stringify({ error: 'Offline - No cached data available' }),
-              {
-                status: 503,
-                headers: { 'Content-Type': 'application/json' },
-              }
-            );
-          });
-        })
-    );
+  // Ne pas mettre en cache les requêtes API authentifiées
+  if (url.pathname.startsWith('/api/') || url.origin.includes('api.collect.fikiri.co') || url.origin.includes('localhost:3000')) {
     return;
   }
 
@@ -140,15 +104,3 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
-
-// Nettoyer le cache API périodiquement (toutes les heures)
-setInterval(() => {
-  caches.open(API_CACHE_NAME).then((cache) => {
-    cache.keys().then((keys) => {
-      keys.forEach((key) => {
-        cache.delete(key);
-      });
-    });
-  });
-}, 60 * 60 * 1000); // 1 heure
-

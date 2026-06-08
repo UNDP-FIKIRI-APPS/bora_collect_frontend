@@ -42,7 +42,7 @@ class SyncService {
       if (this.isOnline && !this.isSyncing) {
         this.syncLocalRecords();
       }
-    }, 10000); // 10 secondes
+    }, parseInt(import.meta.env.VITE_SYNC_INTERVAL_MS || '60000', 10));
   }
 
   // Arrêter la synchronisation périodique

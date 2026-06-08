@@ -1,6 +1,6 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 import ControllerDashboardCharts from '../components/ControllerDashboardCharts';
 import ControllerDailyObjectives from '../components/ControllerDailyObjectives';
 import ObjectiveAlerts from '../components/ObjectiveAlerts';
@@ -785,7 +785,7 @@ export default function ControllerHome() {
             {/* Logo et titre */}
             <div className="flex items-center gap-3 min-w-0">
               <div className="relative">
-                <img src={logo2} alt="Logo" className="h-10 sm:h-12 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
+                <img src={APP_LOGO_URL} alt="Logo Fikiri Collect" className="h-10 sm:h-12 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               </div>
               <div className="flex flex-col">

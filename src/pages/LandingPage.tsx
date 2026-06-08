@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClipboardList, Users, BarChart3, Menu, X } from 'lucide-react';
-import logo2 from '../assets/images/logo2.jpg';
+import { APP_LOGO_URL } from '../config/branding';
 
 type RevealProps = {
   children: React.ReactNode;
@@ -116,13 +116,11 @@ const LandingPage = () => {
         <div className="relative z-10 flex h-full flex-col">
           <nav className="flex items-center justify-between px-4 py-4 sm:px-6 sm:py-6 lg:px-16">
             <div className="flex items-center gap-2 sm:gap-3">
-              <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white/20 p-1">
-                <img
-                  src={logo2}
-                  alt="Fikiri Collect"
-                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full object-cover ring-2 ring-white/40"
-                />
-              </div>
+              <img
+                src={APP_LOGO_URL}
+                alt="Fikiri Collect"
+                className="h-10 w-auto sm:h-12 max-w-[120px] object-contain"
+              />
               <div>
                 <p className="text-[10px] sm:text-xs uppercase tracking-widest text-white">Fikiri Collect</p>
                 <p className="text-sm sm:text-lg font-semibold text-white">Données terrain fiables</p>
@@ -342,9 +340,11 @@ const LandingPage = () => {
       <footer className="border-t border-slate-100 bg-slate-50 px-6 py-12 text-center text-slate-600 lg:px-16">
         <div className="mx-auto flex max-w-4xl flex-col items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white p-1 shadow">
-              <img src={logo2} alt="Fikiri Collect" className="h-10 w-10 rounded-full object-cover" />
-            </div>
+            <img
+              src={APP_LOGO_URL}
+              alt="Fikiri Collect"
+              className="h-12 w-auto max-w-[140px] object-contain"
+            />
             <div className="text-left">
               <p className="text-xs uppercase tracking-widest text-blue-700">Fikiri Collect</p>
               <p className="text-lg font-semibold text-slate-900">Mission : données humaines, impact réel.</p>

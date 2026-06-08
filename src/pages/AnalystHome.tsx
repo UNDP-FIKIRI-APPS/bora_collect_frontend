@@ -1,13 +1,16 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useDebounce } from '../utils/debounce';
 import { useNavigate } from 'react-router-dom';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
-import logo2 from '../assets/images/logo2.jpg';
-import { Bar, Doughnut } from 'react-chartjs-2';
-import Settings from './Settings';
+import { APP_LOGO_URL } from '../config/branding';
+import { Bar, Doughnut } from '../lib/chartSetup';
+import { useAnalystDashboard } from './analyst/useAnalystDashboard';
+import { flipCardStyles } from './analyst/flipCardStyles';
+
+const Settings = lazy(() => import('./Settings'));
 import { exportEnquetesToExcel, exportStatsToExcel, exportStatsSexeToExcel } from '../utils/excelExport';
 import { Download, RefreshCw } from 'lucide-react';
-import EnumeratorListWithDailyStats from '../components/EnumeratorListWithDailyStats';
+const EnumeratorListWithDailyStats = lazy(() => import('../components/EnumeratorListWithDailyStats'));
 import ExportNotification from '../components/ExportNotification';
 import SuccessNotification from '../components/SuccessNotification';
 import PNUDFooter from '../components/PNUDFooter';
@@ -17,30 +20,6 @@ import { toast } from 'react-toastify';
 import { environment } from '../config/environment';
 import { getChartColor, getChartColors, CompatibleColors } from '../utils/colors';
 import enhancedApiService from '../services/enhancedApiService';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement,
-  PointElement,
-  LineElement,
-} from 'chart.js';
-
-ChartJS.register(
-  CategoryScale, 
-  LinearScale, 
-  BarElement, 
-  Title, 
-  Tooltip, 
-  Legend, 
-  ArcElement,
-  PointElement,
-  LineElement
-);
 
 const communesKinshasa = [
   'Gombe', 'Kinshasa', 'Kintambo', 'Ngaliema', 'Mont-Ngafula',
@@ -105,49 +84,13 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
     message: '',
     type: 'success'
   });
+  const [pageSize] = useState(50);
   
   // États pour l'effet de retournement des cartes
   const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
   
-  // Styles CSS pour les animations de retournement
-  const flipCardStyles = `
-    .perspective-1000 {
-      perspective: 1000px;
-    }
-    
-    .transform-style-preserve-3d {
-      transform-style: preserve-3d;
-    }
-    
-    .backface-hidden {
-      backface-visibility: hidden;
-    }
-    
-    .rotate-y-180 {
-      transform: rotateY(180deg);
-    }
-    
-    .hover\\:scale-105:hover {
-      transform: scale(1.05);
-    }
-    
-    .transition-transform {
-      transition: transform 0.3s ease;
-    }
-    
-    .transition-shadow {
-      transition: box-shadow 0.3s ease;
-    }
-    
-    .duration-300 {
-      transition-duration: 300ms;
-    }
-    
-    .duration-700 {
-      transition-duration: 700ms;
-    }
-  `;
-  
+  const { fetchDashboard, invalidateDashboard } = useAnalystDashboard();
+
   // Fonction pour basculer l'état de retournement
   const toggleCardFlip = (cardId: string) => {
     setFlippedCards(prev => ({
@@ -255,28 +198,45 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
     }
   };
 
-  // Fonction pour charger toutes les données
+  // Charger toutes les données via l'endpoint composite (1 requête au lieu de 4+)
   const loadAllData = useCallback(async () => {
-    console.log('🔍 AnalystHome: Début du chargement des données');
+    setCampaignLoading(true);
+    setStatsLoading(true);
+    setValidationLoading(true);
+    setRecordsLoading(true);
     try {
-      await Promise.all([
-        fetchAnalystCampaignData(),
-        fetchAnalystStats(),
-        fetchValidationStats()
-      ]);
-      console.log('🔍 AnalystHome: Chargement des données terminé');
-    } catch (error) {
-      console.error('❌ AnalystHome: Erreur lors du chargement des données:', error);
-    }
-  }, []); // Dépendances vides pour éviter les rechargements en boucle
+      const data = await fetchDashboard(1, pageSize);
+      setCampaignData(data.campaignData);
+      setAnalystStats(data.analystStats);
+      setValidationStats(data.validationStats);
 
-  // Charger les records après que les stats soient chargées
-  useEffect(() => {
-    // Charger les records une fois que les stats sont disponibles
-    if (analystStats || campaignData) {
-      fetchRecords(1);
+      const recordsArray = data.records?.data || [];
+      const pagination = data.records?.pagination;
+      const enrichedRecords = recordsArray.map((record: any) => ({
+        ...record,
+        authorName: record.author?.name || 'N/A',
+      }));
+
+      setRecords(enrichedRecords);
+      if (pagination) {
+        setTotalRecords(pagination.total || enrichedRecords.length);
+        setTotalPages(pagination.totalPages || 1);
+        setCurrentPage(pagination.page || 1);
+      } else {
+        setTotalRecords(enrichedRecords.length);
+        setTotalPages(1);
+        setCurrentPage(1);
+      }
+      setHasTriedReloadRecords(true);
+    } catch (error) {
+      console.error('❌ AnalystHome: Erreur lors du chargement du dashboard:', error);
+    } finally {
+      setCampaignLoading(false);
+      setStatsLoading(false);
+      setValidationLoading(false);
+      setRecordsLoading(false);
     }
-  }, [analystStats, campaignData]); // Charger quand ces données sont disponibles
+  }, [fetchDashboard, pageSize]);
 
   // Sélectionner automatiquement la campagne dès que les données sont disponibles
   useEffect(() => {
@@ -478,6 +438,7 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
               }
             : prev
         );
+        invalidateDashboard();
         fetchRecords(currentPage);
         fetchValidationStats();
         setReviewComment('');
@@ -494,7 +455,6 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(50);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
@@ -1215,7 +1175,7 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
           {/* Logo et titre */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <div className="relative">
-                <img src={logo2} alt="Logo" className="h-8 sm:h-10 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
+                <img src={APP_LOGO_URL} alt="Logo Fikiri Collect" className="h-8 sm:h-10 w-auto object-contain bg-white rounded-lg shadow-md p-1" />
                 <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               </div>
               <div className="flex flex-col">
@@ -2239,14 +2199,16 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
         {/* Page des statistiques détaillées */}
         {view === 'statistiques' && (
           <div>
-            <EnumeratorListWithDailyStats 
-              onViewForms={(enumeratorId) => {
-                setSelectedEnumeratorId(enumeratorId);
-                setSearch('');
-                setCommuneFilter('');
-                setView('enquetes');
-              }}
-            />
+            <Suspense fallback={<div className="text-center py-8 text-gray-500">Chargement des statistiques...</div>}>
+              <EnumeratorListWithDailyStats
+                onViewForms={(enumeratorId) => {
+                  setSelectedEnumeratorId(enumeratorId);
+                  setSearch('');
+                  setCommuneFilter('');
+                  setView('enquetes');
+                }}
+              />
+            </Suspense>
           </div>
         )}
 
@@ -2254,7 +2216,9 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
         {view === 'parametres' && (
           <div>
             <h1 className="text-3xl font-bold mb-6 text-center">Paramètres du Compte Analyste</h1>
-            <Settings />
+            <Suspense fallback={<div className="text-center py-8 text-gray-500">Chargement des paramètres...</div>}>
+              <Settings />
+            </Suspense>
           </div>
         )}
       </main>

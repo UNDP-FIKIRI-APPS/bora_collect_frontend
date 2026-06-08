@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { syncService } from '../services/syncService';
 import { localStorageService } from '../services/localStorageService';
 import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
-import { VirtualizedList } from '../components/VirtualizedList';
+import Pagination from '../components/Pagination';
+
+const RECORDS_PAGE_SIZE = 30;
 
 interface Record {
   id: string;
@@ -56,6 +58,7 @@ export default function RecordsList() {
   }>({ pendingCount: 0, syncedCount: 0, isOnline: true });
   const [showDetails, setShowDetails] = useState<Record | null>(null);
   const [selectedCampaignForm, setSelectedCampaignForm] = useState<any>(null);
+  const [recordsPage, setRecordsPage] = useState(1);
   
   // Fonction utilitaire pour valider la structure des données - VERSION FLEXIBLE
   const isValidRecord = (record: any): record is Record => {
@@ -547,11 +550,17 @@ export default function RecordsList() {
     };
   }, [currentUserId, selectedCampaignId]);
 
-  // Fonction de filtrage des enregistrements (simplifiée - seulement validation de structure)
-  const filteredRecords = records.filter((record) => {
-    // Vérifier que l'enregistrement a la structure attendue
-    return isValidRecord(record);
-  });
+  useEffect(() => {
+    setRecordsPage(1);
+  }, [selectedCampaignId]);
+
+  const filteredRecords = records.filter((record) => isValidRecord(record));
+
+  const totalRecordPages = Math.max(1, Math.ceil(filteredRecords.length / RECORDS_PAGE_SIZE));
+  const paginatedRecords = useMemo(() => {
+    const start = (recordsPage - 1) * RECORDS_PAGE_SIZE;
+    return filteredRecords.slice(start, start + RECORDS_PAGE_SIZE);
+  }, [filteredRecords, recordsPage]);
 
   if (loading) {
     return (
@@ -707,7 +716,7 @@ export default function RecordsList() {
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((record) => (
+                paginatedRecords.map((record) => (
                   <tr key={record.id} className="hover:bg-gray-50">
                     {generateTableColumns().map((column) => (
                       <td key={column.key} className="px-6 py-4 whitespace-nowrap">
@@ -720,6 +729,17 @@ export default function RecordsList() {
             </tbody>
           </table>
         </div>
+        {filteredRecords.length > RECORDS_PAGE_SIZE && (
+          <div className="px-4 py-3 border-t border-gray-200">
+            <Pagination
+              currentPage={recordsPage}
+              totalPages={totalRecordPages}
+              totalItems={filteredRecords.length}
+              pageSize={RECORDS_PAGE_SIZE}
+              onPageChange={setRecordsPage}
+            />
+          </div>
+        )}
       </div>
 
       {/* 🔄 Modal de détails - Version structurée identique à l'analyste */}

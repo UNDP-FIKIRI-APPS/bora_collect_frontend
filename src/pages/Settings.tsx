@@ -147,12 +147,12 @@ const Settings: React.FC = () => {
     loadUserData();
   }, [photoDeletedLocally]);
 
-  // Charger les liens publics et campagnes disponibles pour les enquêteurs
+  // Bundle agrégé : liens + campagnes + stats (une seule requête)
   useEffect(() => {
-    const loadPublicLinksData = async () => {
+    const loadControllerDashboard = async () => {
       const localUser = localStorage.getItem('user');
       if (!localUser) return;
-      
+
       const userData = JSON.parse(localUser);
       if (userData.role !== 'CONTROLLER') return;
 
@@ -160,68 +160,41 @@ const Settings: React.FC = () => {
       if (!token) return;
 
       setLoadingLinks(true);
+      setLoadingStats(true);
       try {
-        // Charger les liens existants
-        const linksData = await enhancedApiService.get<PublicLink[]>('/public-links/my-links');
-        setPublicLinks(linksData);
+        const data = await enhancedApiService.get<{
+          links: PublicLink[];
+          availableSurveys: AvailableSurvey[];
+          submissionStats: { appSubmissions: number; publicSubmissions: number; total: number };
+        }>('/public-links/controller-dashboard');
 
-        // Charger les campagnes disponibles
-        const surveysData = await enhancedApiService.get<AvailableSurvey[]>('/public-links/available-surveys');
-        setAvailableSurveys(surveysData);
+        setPublicLinks(data.links);
+        setAvailableSurveys(data.availableSurveys);
+        setSubmissionStats(data.submissionStats);
       } catch (error) {
-        console.error('Erreur lors du chargement des liens publics:', error);
+        console.error('Erreur lors du chargement du dashboard enquêteur:', error);
       } finally {
         setLoadingLinks(false);
+        setLoadingStats(false);
       }
     };
 
-    loadPublicLinksData();
-    loadSubmissionStats();
+    loadControllerDashboard();
   }, []);
 
-  // Charger les statistiques de soumission pour l'enquêteur
   const loadSubmissionStats = async () => {
     const localUser = localStorage.getItem('user');
     if (!localUser) return;
-    
+
     const userData = JSON.parse(localUser);
     if (userData.role !== 'CONTROLLER') return;
 
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
     setLoadingStats(true);
     try {
-      // Récupérer toutes les campagnes de l'enquêteur
-      const surveysResponse = await fetch(`${environment.apiBaseUrl}/public-links/available-surveys`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      const surveys = await enhancedApiService.get<AvailableSurvey[]>('/public-links/available-surveys');
-      let totalAppSubmissions = 0;
-      let totalPublicSubmissions = 0;
-
-      // Pour chaque campagne, récupérer les stats
-      for (const survey of surveys) {
-        try {
-          // Stats des soumissions par app
-          const appData = await enhancedApiService.get<any>(`/records/controller?campaignId=${survey.id}`);
-          totalAppSubmissions += Array.isArray(appData) ? appData.length : (appData?.data?.length || 0);
-
-          // Stats des soumissions par lien public (depuis les liens de l'utilisateur)
-          const linksData = await enhancedApiService.get<PublicLink[]>('/public-links/my-links');
-          const surveyLinks = linksData.filter((link: PublicLink) => link.survey?.id === survey.id);
-          totalPublicSubmissions += surveyLinks.reduce((sum: number, link: PublicLink) => sum + (link._count?.submissions || 0), 0);
-        } catch (error) {
-          console.error(`Erreur lors du chargement des stats pour la campagne ${survey.id}:`, error);
-        }
-      }
-
-      setSubmissionStats({
-        appSubmissions: totalAppSubmissions,
-        publicSubmissions: totalPublicSubmissions,
-        total: totalAppSubmissions + totalPublicSubmissions
-      });
+      const data = await enhancedApiService.get<{
+        submissionStats: { appSubmissions: number; publicSubmissions: number; total: number };
+      }>('/public-links/controller-dashboard', { skipCache: true });
+      setSubmissionStats(data.submissionStats);
     } catch (error) {
       console.error('Erreur lors du chargement des statistiques:', error);
     } finally {
@@ -279,6 +252,18 @@ const Settings: React.FC = () => {
       setTimeout(() => setCopiedLinkId(null), 2000);
     } catch (error) {
       console.error('Erreur lors de la copie:', error);
+    }
+  };
+
+  const copyEmbedCode = async (link: PublicLink) => {
+    const embedUrl = `${window.location.origin}/embed/${link.token}`;
+    const code = `<iframe src="${embedUrl}" width="100%" height="600" frameborder="0" title="Formulaire Fikiri Collect"></iframe>`;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedLinkId(`embed-${link.id}`);
+      setTimeout(() => setCopiedLinkId(null), 2000);
+    } catch (error) {
+      console.error('Erreur lors de la copie embed:', error);
     }
   };
 
@@ -1238,6 +1223,17 @@ const Settings: React.FC = () => {
                               Copier
                             </>
                           )}
+                        </button>
+                        <button
+                          onClick={() => copyEmbedCode(link)}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                            copiedLinkId === `embed-${link.id}`
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                          }`}
+                          title="Copier le code iframe embed"
+                        >
+                          {copiedLinkId === `embed-${link.id}` ? 'Embed copié !' : 'Embed'}
                         </button>
                         <a
                           href={`/form/${link.token}`}
