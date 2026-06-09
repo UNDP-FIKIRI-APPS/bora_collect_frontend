@@ -4,7 +4,11 @@ import { Loader2 } from 'lucide-react';
 import { environment } from '../config/environment';
 import { localStorageService } from '../services/localStorageService';
 import LocationInput from '../components/LocationInput';
-import { evaluateConditional, extractFieldsFromFormSchema } from '../utils/formSchema';
+import {
+  evaluateConditional,
+  extractFieldsFromFormSchema,
+  getSectionSortOrder,
+} from '../utils/formSchema';
 
 interface Campaign {
   id: string;
@@ -108,6 +112,16 @@ const ControllerCampaignForms: React.FC = () => {
     return '';
   }, []);
   
+  const sortedSectionKeys = useMemo(
+    () =>
+      Object.keys(sections).sort(
+        (a, b) =>
+          getSectionSortOrder(sections[a]?.label || '', a) -
+          getSectionSortOrder(sections[b]?.label || '', b),
+      ),
+    [sections],
+  );
+
   // Mémoriser les champs visibles par section pour éviter les recalculs
   const visibleFieldsBySection = useMemo(() => {
     const result: Record<string, any[]> = {};
@@ -869,7 +883,7 @@ const ControllerCampaignForms: React.FC = () => {
 
             {/* Formulaire dynamique avec sections colorées (ultra-optimisé pour Chrome) */}
             <div className="space-y-6">
-              {Object.keys(sections).map((sectionKey) => {
+              {sortedSectionKeys.map((sectionKey) => {
                 const section = sections[sectionKey];
                 const visibleFields = visibleFieldsBySection[sectionKey] || [];
                 
@@ -882,7 +896,7 @@ const ControllerCampaignForms: React.FC = () => {
                 return (
                   <div key={sectionKey} className={`p-4 sm:p-6 rounded-xl border ${sectionClasses}`}>
                       <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">
-                        {sectionNumber}{section.label}
+                        {section.label.match(/^\d+\./) ? section.label : `${sectionNumber}${section.label}`}
                       </h3>
                       <div className="space-y-4">
                         {visibleFields.map((field: any, index: number) => {

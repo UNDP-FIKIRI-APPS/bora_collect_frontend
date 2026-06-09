@@ -149,6 +149,85 @@ function flatArrayToBlocks(fields: any[]): FormBlock[] {
   });
 }
 
+const FIELD_ORDER_BY_SECTION: Record<string, string[]> = {
+  identification: [
+    'nomOuCode',
+    'age',
+    'sexe',
+    'tailleMenage',
+    'commune',
+    'autreCommune',
+    'quartier',
+    'autreQuartier',
+    'province',
+    'ville',
+    'city',
+    'communeQuartier',
+    'geolocalisation',
+  ],
+  household: [
+    'nomOuCode',
+    'age',
+    'sexe',
+    'tailleMenage',
+    'commune',
+    'autreCommune',
+    'quartier',
+    'autreQuartier',
+    'province',
+    'ville',
+    'city',
+    'communeQuartier',
+    'geolocalisation',
+  ],
+  modeCuisson: ['combustibles', 'autresCombustibles', 'equipements', 'autresEquipements'],
+  cooking: ['combustibles', 'equipements', 'autresCombustibles', 'autresEquipements'],
+  connaissance: [
+    'connaissanceSolutions',
+    'explicationSolutions',
+    'solutionsConnaissances',
+    'avantages',
+    'autresAvantages',
+  ],
+  perceptions: ['obstacles', 'autresObstacles', 'pretA'],
+  intentionAdoption: ['pretAcheterFoyer', 'pretAcheterGPL'],
+};
+
+function getFieldSortOrder(field: LegacyExtractedField): number {
+  const fieldKey = field.id.includes('.') ? field.id.split('.').pop()! : field.id;
+  const canonical = FIELD_ORDER_BY_SECTION[field.section];
+  if (!canonical) return 999;
+  const index = canonical.indexOf(fieldKey);
+  return index === -1 ? 999 : index;
+}
+
+export function sortExtractedFields(fields: LegacyExtractedField[]): LegacyExtractedField[] {
+  return [...fields].sort((a, b) => {
+    const sectionDiff =
+      getSectionSortOrder(a.sectionLabel, a.section) -
+      getSectionSortOrder(b.sectionLabel, b.section);
+    if (sectionDiff !== 0) return sectionDiff;
+    return getFieldSortOrder(a) - getFieldSortOrder(b);
+  });
+}
+
+export function getSectionSortOrder(label: string, sectionKey?: string): number {
+  const fromLabel = String(label || '').match(/^(\d+)\./);
+  if (fromLabel) return Number(fromLabel[1]);
+
+  const byKey: Record<string, number> = {
+    identification: 1,
+    household: 1,
+    modeCuisson: 2,
+    cooking: 2,
+    connaissance: 3,
+    perceptions: 4,
+    intentionAdoption: 5,
+  };
+  if (sectionKey && byKey[sectionKey] !== undefined) return byKey[sectionKey];
+  return 99;
+}
+
 function nestedObjectToBlocks(fields: Record<string, any>): FormBlock[] {
   const blocks: FormBlock[] = [];
   Object.keys(fields).forEach((sectionKey) => {
@@ -156,6 +235,7 @@ function nestedObjectToBlocks(fields: Record<string, any>): FormBlock[] {
     if (!section?.fields) return;
 
     const heading = createBlock('heading', section.label || section.title || sectionKey);
+    heading.id = sectionKey;
     heading.content = section.label || section.title || sectionKey;
     blocks.push(heading);
 
@@ -336,7 +416,7 @@ export function blocksToLegacyFields(blocks: FormBlock[]): LegacyExtractedField[
 
 export function extractFieldsFromFormSchema(raw: unknown): LegacyExtractedField[] {
   const schema = parseToFormSchemaV1(raw);
-  return blocksToLegacyFields(schema.blocks);
+  return sortExtractedFields(blocksToLegacyFields(schema.blocks));
 }
 
 export function getFormPages(blocks: FormBlock[]): FormBlock[][] {
