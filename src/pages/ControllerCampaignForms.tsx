@@ -358,8 +358,42 @@ const ControllerCampaignForms: React.FC = () => {
     }
   }, [apiBaseUrl, campaigns]);
 
+  const getSubmissionFormData = useCallback(() => {
+    const data = { ...formData };
+    const geoBase = Object.keys(data).find((key) => /geolocalisation$/i.test(key));
+    if (geoBase) {
+      if (!String(data['identification.commune'] || '').trim() && data[`${geoBase}_commune`]) {
+        data['identification.commune'] = data[`${geoBase}_commune`];
+      }
+      if (!String(data['identification.quartier'] || '').trim() && data[`${geoBase}_quartier`]) {
+        data['identification.quartier'] = data[`${geoBase}_quartier`];
+      }
+    }
+    return data;
+  }, [formData]);
+
+  const hasFilledCommune = useCallback((data: Record<string, any>) => {
+    return Object.entries(data).some(([key, value]) => {
+      if (!/commune/i.test(key) || /autrecommune/i.test(key) || /geolocalisation/i.test(key)) {
+        return false;
+      }
+      return value !== undefined && value !== null && String(value).trim() !== '';
+    });
+  }, []);
+
+  const hasFilledQuartier = useCallback((data: Record<string, any>) => {
+    return Object.entries(data).some(([key, value]) => {
+      if (!/quartier/i.test(key) || /autrequartier/i.test(key) || /geolocalisation/i.test(key)) {
+        return false;
+      }
+      return value !== undefined && value !== null && String(value).trim() !== '';
+    });
+  }, []);
+
   // Fonction pour vérifier si la localisation est valide (GPS ou adresse)
   const isLocationValid = useMemo(() => {
+    const data = getSubmissionFormData();
+
     // Vérifier si GPS est présent dans l'état
     const hasGPS = geolocation.latitude !== null && 
                    geolocation.longitude !== null && 
@@ -369,8 +403,8 @@ const ControllerCampaignForms: React.FC = () => {
     if (hasGPS) return true;
     
     // Vérifier aussi dans formData au cas où les données GPS sont stockées différemment
-    const gpsInFormData = Object.keys(formData).some(key => {
-      const value = formData[key];
+    const gpsInFormData = Object.keys(data).some(key => {
+      const value = data[key];
       if (!value) return false;
       const valueStr = String(value).trim();
       if (/geolocalisation/i.test(key) || /GPS/i.test(key)) {
@@ -390,17 +424,8 @@ const ControllerCampaignForms: React.FC = () => {
 
     if (gpsInFormData) return true;
 
-    // Vérifier si une adresse complète est fournie
-    const hasProvince = Object.keys(formData).some(key => 
-      /province/i.test(key) && formData[key] && String(formData[key]).trim() !== ''
-    );
-    const hasCommuneOrQuartier = Object.keys(formData).some(key => 
-      (/commune/i.test(key) || /quartier/i.test(key) || /ville/i.test(key) || /city/i.test(key) || /communeQuartier/i.test(key)) && 
-      formData[key] && String(formData[key]).trim() !== ''
-    );
-
-    return hasProvince && hasCommuneOrQuartier;
-  }, [geolocation, formData]);
+    return hasFilledCommune(data) && hasFilledQuartier(data);
+  }, [geolocation, formData, getSubmissionFormData, hasFilledCommune, hasFilledQuartier]);
 
   // Fonction pour valider soit GPS soit adresse manuelle
   const validateLocation = (gpsState: typeof geolocation, data: Record<string, any>): { isValid: boolean; message?: string } => {
@@ -434,83 +459,34 @@ const ControllerCampaignForms: React.FC = () => {
       return { isValid: true };
     }
 
-    // Vérifier si une adresse complète est fournie
-    // Les champs peuvent être au format "sectionKey.fieldKey" (ex: "household.communeQuartier", "identification.province")
-    const provinceKeys: string[] = [];
-    const communeQuartierKeys: string[] = [];
-    
-    Object.keys(data).forEach(key => {
-      const value = data[key];
-      if (!value) return;
-      const valueStr = String(value).trim();
-      if (valueStr === '') return;
-      
-      // Chercher "province" dans la clé
-      if (/province/i.test(key)) {
-        provinceKeys.push(key);
-      }
-      
-      // Chercher commune, quartier, ville, city, ou communeQuartier dans la clé
-      if (/commune/i.test(key) || /quartier/i.test(key) || /ville/i.test(key) || /city/i.test(key) || /communeQuartier/i.test(key)) {
-        communeQuartierKeys.push(key);
-      }
-    });
-
-    // Si l'utilisateur a commencé à remplir des champs d'adresse, tous les champs requis doivent être remplis
-    const hasAnyAddressField = provinceKeys.length > 0 || communeQuartierKeys.length > 0;
-    
-    if (hasAnyAddressField) {
-      // Si au moins un champ d'adresse est rempli, tous les champs requis doivent l'être
-      if (provinceKeys.length === 0) {
-        return {
-          isValid: false,
-          message: '❌ Pour utiliser une adresse manuelle, veuillez compléter tous les champs requis : province et commune/quartier.'
-        };
-      }
-      
-      if (communeQuartierKeys.length === 0) {
-        return {
-          isValid: false,
-          message: '❌ Pour utiliser une adresse manuelle, veuillez compléter tous les champs requis : province et commune/quartier.'
-        };
-      }
-      
-      // Vérifier que les valeurs ne sont pas vides
-      const hasValidProvince = provinceKeys.some(key => {
-        const value = data[key];
-        return value && String(value).trim() !== '';
-      });
-      
-      const hasValidCommuneQuartier = communeQuartierKeys.some(key => {
-        const value = data[key];
-        return value && String(value).trim() !== '';
-      });
-      
-      if (hasValidProvince && hasValidCommuneQuartier) {
-        return { isValid: true };
-      }
-      
-      return {
-        isValid: false,
-        message: '❌ Pour utiliser une adresse manuelle, veuillez compléter tous les champs requis : province et commune/quartier.'
-      };
+    if (hasFilledCommune(data) && hasFilledQuartier(data)) {
+      return { isValid: true };
     }
 
     return {
       isValid: false,
-      message: '❌ Veuillez soit capturer votre position GPS, soit compléter une adresse complète (province et commune/quartier) avant de soumettre le formulaire.'
+      message:
+        '❌ Veuillez soit capturer votre position GPS, soit sélectionner la commune et le quartier avant de soumettre le formulaire.',
     };
   };
 
   // Fonction pour valider tous les champs obligatoires
-  const validateRequiredFields = (data: Record<string, any>, fields: any[], gpsState: typeof geolocation): { isValid: boolean; message?: string; missingField?: string } => {
+  const validateRequiredFields = (
+    data: Record<string, any>,
+    fields: any[],
+    gpsState: typeof geolocation,
+    isFieldVisible?: (field: any) => boolean,
+  ): { isValid: boolean; message?: string; missingField?: string } => {
     if (!fields || fields.length === 0) {
       return { isValid: true };
     }
 
     for (const field of fields) {
-      // Ignorer les champs de section
-      if (field.type === 'section') {
+      if (['section', 'info', 'paragraph', 'divider', 'heading'].includes(field.type)) {
+        continue;
+      }
+
+      if (isFieldVisible && !isFieldVisible(field)) {
         continue;
       }
 
@@ -589,7 +565,13 @@ const ControllerCampaignForms: React.FC = () => {
     const extractedFields = extractFieldsFromForm(selectedForm.fields);
 
     // Valider tous les champs obligatoires (en excluant les champs GPS qui sont validés séparément)
-    const requiredFieldsValidation = validateRequiredFields(formData, extractedFields, geolocation);
+    const submissionFormData = getSubmissionFormData();
+    const requiredFieldsValidation = validateRequiredFields(
+      submissionFormData,
+      extractedFields,
+      geolocation,
+      shouldShowField,
+    );
     if (!requiredFieldsValidation.isValid) {
       toast.error(requiredFieldsValidation.message || 'Champs obligatoires manquants');
       // Faire défiler vers le champ manquant si possible
@@ -604,7 +586,7 @@ const ControllerCampaignForms: React.FC = () => {
     }
 
     // Valider la localisation (GPS ou adresse manuelle)
-    const locationValidation = validateLocation(geolocation, formData);
+    const locationValidation = validateLocation(geolocation, submissionFormData);
     if (!locationValidation.isValid) {
       toast.error(locationValidation.message || 'Localisation requise');
       // Faire défiler vers le champ GPS ou adresse si visible
@@ -619,7 +601,7 @@ const ControllerCampaignForms: React.FC = () => {
     const submissionData = {
       formId: selectedForm.id,
       surveyId: selectedCampaignId,
-      formData: formData,
+      formData: submissionFormData,
       submittedAt: new Date().toISOString(),
       isOnline: isOnline
     };
@@ -1013,13 +995,20 @@ const ControllerCampaignForms: React.FC = () => {
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
                             )}
-                            {field.type === 'select' && field.options && (
+                            {(field.type === 'select' || field.type === 'dropdown') && field.options && (
                               <select
+                                id={field.id}
                                 value={formData[field.id] || ''}
                                 onChange={(e) => handleFieldChange(field.id, e.target.value)}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                               >
-                                <option value="">Sélectionnez une option</option>
+                                <option value="">
+                                  {/commune/i.test(field.id) || /commune/i.test(field.label)
+                                    ? 'Sélectionnez...'
+                                    : /quartier/i.test(field.id) || /quartier/i.test(field.label)
+                                      ? 'Sélectionnez...'
+                                      : 'Sélectionnez une option'}
+                                </option>
                                 {field.options.map((option: string, optIndex: number) => (
                                   <option key={optIndex} value={option}>{option}</option>
                                 ))}
@@ -1226,7 +1215,7 @@ const ControllerCampaignForms: React.FC = () => {
                     <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
-                    <span className="font-medium">⚠️ Veuillez soit capturer votre position GPS, soit compléter une adresse complète (province et commune/quartier)</span>
+                    <span className="font-medium">⚠️ Veuillez soit capturer votre position GPS, soit sélectionner la commune et le quartier</span>
                   </div>
                 </div>
               )}
