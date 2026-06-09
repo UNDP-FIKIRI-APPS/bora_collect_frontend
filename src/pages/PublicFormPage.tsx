@@ -7,6 +7,7 @@ import enhancedApiService from '../services/enhancedApiService';
 import { getCitiesByProvince, getCommunesByCity } from '../data/citiesData';
 import { getQuartiersByCommune } from '../data/quartiersData';
 import PublicFormSchemaView, { usesFormSchemaV1 } from './PublicFormSchemaView';
+import { extractFieldsFromFormSchema } from '../utils/formSchema';
 
 interface FormField {
   id: string;
@@ -53,52 +54,44 @@ interface LinkData {
 const parseFormTemplate = (template: FormTemplate | null): FormTemplate | null => {
   if (!template) return null;
 
-  let fields: any = template.fields;
-  if (typeof fields === 'string') {
-    try {
-      fields = JSON.parse(fields);
-    } catch (error) {
-      console.error('Error parsing fields JSON:', error);
-      return { ...template, fields: [] };
+  const flatFields: FormField[] = [];
+  let lastSection = '';
+
+  for (const field of extractFieldsFromFormSchema(template.fields)) {
+    if (field.section !== lastSection) {
+      flatFields.push({
+        id: `section_${field.section}`,
+        label: field.sectionLabel,
+        type: 'section',
+        required: false,
+        section: field.section,
+      });
+      lastSection = field.section;
     }
-  }
 
-  if (fields && typeof fields === 'object' && !Array.isArray(fields)) {
-    const flatFields: FormField[] = [];
-    Object.entries(fields).forEach(([sectionKey, section]: [string, any]) => {
-      if (section.type === 'object' && section.fields) {
-        flatFields.push({
-          id: `section_${sectionKey}`,
-          label: section.label || sectionKey,
-          type: 'section',
-          required: false,
-        });
-        Object.entries(section.fields).forEach(([fieldKey, field]: [string, any]) => {
-          const fieldType = fieldKey === 'communeQuartier' ? 'text' : field.type || 'text';
-          // Utiliser le format sectionKey.fieldKey pour correspondre au format attendu
-          flatFields.push({
-            id: `${sectionKey}.${fieldKey}`, // Format: identification.nomOuCode, modeCuisson.combustibles, etc.
-            label: field.label || fieldKey,
-            type: fieldType,
-            required: field.required || false,
-            options: fieldType === 'text' ? undefined : field.options,
-            placeholder: fieldKey === 'communeQuartier'
-              ? 'Entrez votre commune/quartier'
-              : field.placeholder,
-            description: field.helpText,
-            section: sectionKey, // Garder la section pour la transformation
-            fieldKey: fieldKey, // Garder le fieldKey original
-            conditional: field.conditional, // Garder la logique conditionnelle
-            helpText: field.helpText, // Garder le texte d'aide
-            rankingOptions: field.rankingOptions, // Garder les options de rang
-          });
-        });
-      }
+    flatFields.push({
+      id: field.id,
+      label: field.label,
+      type: field.type === 'info' ? 'info' : field.type,
+      required: field.required,
+      options: field.options?.length ? field.options : undefined,
+      placeholder: field.placeholder,
+      description: field.helpText,
+      section: field.section,
+      fieldKey: field.id.includes('.') ? field.id.split('.').pop() : field.id,
+      conditional: field.conditional
+        ? {
+            field: field.conditional.fieldId,
+            operator: field.conditional.operator,
+            value: field.conditional.value,
+          }
+        : undefined,
+      helpText: field.helpText,
+      rankingOptions: field.rankingOptions || undefined,
     });
-    return { ...template, fields: flatFields };
   }
 
-  return { ...template, fields: Array.isArray(fields) ? fields : [] };
+  return { ...template, fields: flatFields };
 };
 
 interface PublicFormPageProps {

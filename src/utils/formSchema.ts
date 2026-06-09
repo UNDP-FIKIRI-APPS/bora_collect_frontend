@@ -228,9 +228,27 @@ export function getSectionSortOrder(label: string, sectionKey?: string): number 
   return 99;
 }
 
+function sortSectionKeys(fields: Record<string, any>): string[] {
+  return Object.keys(fields).sort(
+    (a, b) =>
+      getSectionSortOrder(fields[a]?.label || fields[a]?.title || '', a) -
+      getSectionSortOrder(fields[b]?.label || fields[b]?.title || '', b),
+  );
+}
+
+function sortFieldKeys(sectionKey: string, fieldKeys: string[]): string[] {
+  const canonical = FIELD_ORDER_BY_SECTION[sectionKey];
+  if (!canonical) return fieldKeys;
+  return [...fieldKeys].sort((a, b) => {
+    const indexA = canonical.indexOf(a);
+    const indexB = canonical.indexOf(b);
+    return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+  });
+}
+
 function nestedObjectToBlocks(fields: Record<string, any>): FormBlock[] {
   const blocks: FormBlock[] = [];
-  Object.keys(fields).forEach((sectionKey) => {
+  sortSectionKeys(fields).forEach((sectionKey) => {
     const section = fields[sectionKey];
     if (!section?.fields) return;
 
@@ -239,7 +257,7 @@ function nestedObjectToBlocks(fields: Record<string, any>): FormBlock[] {
     heading.content = section.label || section.title || sectionKey;
     blocks.push(heading);
 
-    Object.keys(section.fields).forEach((fieldKey) => {
+    sortFieldKeys(sectionKey, Object.keys(section.fields)).forEach((fieldKey) => {
       const f = section.fields[fieldKey];
       const type = mapLegacyType(f.type || 'text');
       const block = createBlock(type, f.label || f.title || fieldKey);
