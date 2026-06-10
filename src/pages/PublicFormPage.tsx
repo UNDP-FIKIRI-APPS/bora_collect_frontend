@@ -8,6 +8,14 @@ import { getCitiesByProvince, getCommunesByCity } from '../data/citiesData';
 import { getQuartiersByCommune } from '../data/quartiersData';
 import PublicFormSchemaView, { usesFormSchemaV1 } from './PublicFormSchemaView';
 import { extractFieldsFromFormSchema } from '../utils/formSchema';
+import {
+  isCommuneFormField,
+  isFieldValueEmpty,
+  isGpsFormField,
+  isQuartierFormField,
+  normalizeSubmissionFormData,
+  validateFormLocation,
+} from '../utils/formValidation';
 
 interface FormField {
   id: string;
@@ -130,6 +138,7 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
         // Utilisation du nouveau service API (skipAuth car c'est un lien public)
         const data = await enhancedApiService.get<LinkData>(`/public-links/form/${token}`, {
           skipAuth: true,
+          skipCache: true,
         });
         // Logs réduits pour améliorer les performances
         setLinkData(data);
@@ -181,161 +190,27 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
     }
   }, [formData]);
 
-  // Fonction pour valider soit GPS soit adresse manuelle
-  const validateLocation = (data: Record<string, any>, useAddressData: boolean = false): { isValid: boolean; message?: string } => {
-    // Si on utilise les données d'adresse depuis le state (locationType === 'address')
-    if (useAddressData) {
-      // La validation des données d'adresse est faite avant l'appel à cette fonction
-      // On vérifie juste qu'il y a des données d'adresse dans data
-      const provinceKeys = Object.keys(data).filter(key => /province/i.test(key));
-      const communeKeys = Object.keys(data).filter(key => /commune/i.test(key) || /quartier/i.test(key));
-      if (provinceKeys.length > 0 && communeKeys.length > 0) {
-        return { isValid: true };
-      }
-      return {
-        isValid: false,
-        message: '❌ Pour utiliser une adresse manuelle, veuillez compléter tous les champs requis : province et commune/quartier.'
-      };
-    }
-    // Vérifier si GPS est présent
-    const hasGPS = Object.keys(data).some(key => {
-      const value = data[key];
-      if (!value) return false;
-      const valueStr = String(value).trim();
-      // Vérifier si c'est une coordonnée GPS (format latitude,longitude ou séparés)
-      if (/geolocalisation/i.test(key) || /GPS/i.test(key)) {
-        if (valueStr.includes(',') || valueStr.includes(';')) {
-          const coords = valueStr.split(/[,;]/).map(c => parseFloat(c.trim()));
-          if (coords.length >= 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-            return true;
-          }
-        }
-        // Vérifier si c'est un objet avec latitude/longitude
-        if (typeof value === 'object' && (value.latitude || value.longitude)) {
-          return true;
-        }
-      }
-      return false;
-    });
-
-    if (hasGPS) {
-      return { isValid: true };
-    }
-
-    // Vérifier si une adresse complète est fournie
-    // Les champs peuvent être au format "sectionKey.fieldKey" (ex: "household.communeQuartier", "identification.province")
-    const provinceKeys: string[] = [];
-    const communeQuartierKeys: string[] = [];
-    
-    Object.keys(data).forEach(key => {
-      const value = data[key];
-      if (!value) return;
-      const valueStr = String(value).trim();
-      if (valueStr === '') return;
-      
-      // Chercher "province" dans la clé
-      if (/province/i.test(key)) {
-        provinceKeys.push(key);
-      }
-      
-      // Chercher commune, quartier, ville, city, ou communeQuartier dans la clé
-      if (/commune/i.test(key) || /quartier/i.test(key) || /ville/i.test(key) || /city/i.test(key)) {
-        communeQuartierKeys.push(key);
-      }
-    });
-
-    // Si l'utilisateur a commencé à remplir des champs d'adresse, tous les champs requis doivent être remplis
-    const hasAnyAddressField = provinceKeys.length > 0 || communeQuartierKeys.length > 0;
-    
-    if (hasAnyAddressField) {
-      // Si au moins un champ d'adresse est rempli, tous les champs requis doivent l'être
-      if (provinceKeys.length === 0) {
-        return {
-          isValid: false,
-          message: '❌ Pour utiliser une adresse manuelle, veuillez compléter tous les champs requis : province et commune/quartier.'
-        };
-      }
-      
-      if (communeQuartierKeys.length === 0) {
-        return {
-          isValid: false,
-          message: '❌ Pour utiliser une adresse manuelle, veuillez compléter tous les champs requis : province et commune/quartier.'
-        };
-      }
-      
-      // Vérifier que les valeurs ne sont pas vides
-      const hasValidProvince = provinceKeys.some(key => {
-        const value = data[key];
-        return value && String(value).trim() !== '';
-      });
-      
-      const hasValidCommuneQuartier = communeQuartierKeys.some(key => {
-        const value = data[key];
-        return value && String(value).trim() !== '';
-      });
-      
-      if (hasValidProvince && hasValidCommuneQuartier) {
-        return { isValid: true };
-      }
-      
-      return {
-        isValid: false,
-        message: '❌ Pour utiliser une adresse manuelle, veuillez compléter tous les champs requis : province et commune/quartier.'
-      };
-    }
-
-    return {
-      isValid: false,
-      message: '❌ Veuillez soit capturer votre position GPS, soit compléter une adresse complète (province et commune/quartier) avant de soumettre le formulaire.'
-    };
-  };
-
-  // Fonction pour valider tous les champs obligatoires
-  const validateRequiredFields = (data: Record<string, any>, fields: FormField[], locationType: 'gps' | 'address', addressData: { province: string; commune: string }): { isValid: boolean; message?: string; missingField?: string } => {
+  const validateRequiredFields = (
+    data: Record<string, any>,
+    fields: FormField[],
+    isFieldVisible: (field: FormField) => boolean,
+  ): { isValid: boolean; message?: string; missingField?: string } => {
     if (!fields || fields.length === 0) {
       return { isValid: true };
     }
 
-    // Vérifier si l'adresse est complète (pour ignorer le GPS si adresse choisie)
-    const hasCompleteAddress = locationType === 'address' && addressData.province && addressData.commune;
-
     for (const field of fields) {
-      // Ignorer les champs de section et info
-      if (field.type === 'section' || field.type === 'info') {
-        continue;
-      }
+      if (field.type === 'section' || field.type === 'info') continue;
+      if (!isFieldVisible(field)) continue;
 
-      // Si le champ est obligatoire
-      if (field.required) {
-        // Ignorer le champ GPS si l'utilisateur a choisi l'adresse manuelle et que l'adresse est complète
-        if (field.type === 'gps' && hasCompleteAddress) {
-          continue; // Le GPS n'est pas obligatoire si l'adresse est complète
-        }
+      if (!field.required) continue;
 
-        const fieldValue = data[field.id];
-        
-        // Vérifier si le champ est vide
-        let isEmpty = false;
-        
-        if (fieldValue === undefined || fieldValue === null) {
-          isEmpty = true;
-        } else if (typeof fieldValue === 'string') {
-          isEmpty = fieldValue.trim() === '';
-        } else if (Array.isArray(fieldValue)) {
-          isEmpty = fieldValue.length === 0;
-        } else if (typeof fieldValue === 'object') {
-          // Pour les objets (comme ranking), vérifier s'il a au moins une propriété non vide
-          isEmpty = Object.keys(fieldValue).length === 0 || 
-                   Object.values(fieldValue).every(v => !v || (typeof v === 'string' && v.trim() === ''));
-        }
-
-        if (isEmpty) {
-          return {
-            isValid: false,
-            message: `❌ Le champ "${field.label || field.id}" est obligatoire. Veuillez le remplir avant de soumettre le formulaire.`,
-            missingField: field.id
-          };
-        }
+      if (isFieldValueEmpty(data[field.id])) {
+        return {
+          isValid: false,
+          message: `Le champ « ${field.label || field.id} » est obligatoire`,
+          missingField: field.id,
+        };
       }
     }
 
@@ -350,14 +225,21 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
       // Transformer les données pour correspondre au format attendu (avec clés pointées)
       // Les données sont déjà dans le format sectionKey.fieldKey grâce à parseFormTemplate
       // Mais pour les champs ranking et autres cas spéciaux, on doit les transformer
-      const transformedFormData: Record<string, any> = { ...formData };
-      
-      // Nettoyer les clés temporaires (comme les clés de province GPS)
-      Object.keys(transformedFormData).forEach(key => {
-        if (key.endsWith('_province')) {
-          delete transformedFormData[key];
+      let transformedFormData = normalizeSubmissionFormData(formData) as Record<string, any>;
+
+      if (locationType === 'address') {
+        if (addressData.commune || showCustomCommune) {
+          transformedFormData['identification.commune'] = showCustomCommune
+            ? customCommune
+            : addressData.commune;
         }
-      });
+        if (addressData.quartier || showCustomQuartier) {
+          transformedFormData['identification.quartier'] = showCustomQuartier
+            ? customQuartier
+            : addressData.quartier;
+        }
+      }
+      transformedFormData = normalizeSubmissionFormData(transformedFormData) as Record<string, any>;
       
       // Traiter les champs ranking - les données sont déjà dans le format { option: rank }
       // Pas besoin de transformation car elles sont déjà stockées correctement
@@ -383,7 +265,11 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
       }
 
       // Valider tous les champs obligatoires (en excluant le GPS si l'adresse est complète)
-      const requiredFieldsValidation = validateRequiredFields(transformedFormData, formTemplate?.fields || [], locationType, addressData);
+      const requiredFieldsValidation = validateRequiredFields(
+        transformedFormData,
+        formTemplate?.fields || [],
+        shouldShowField,
+      );
       if (!requiredFieldsValidation.isValid) {
         setError(requiredFieldsValidation.message || 'Champs obligatoires manquants');
         setSubmitting(false);
@@ -400,98 +286,12 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
         return;
       }
 
-      // Vérifier si GPS est présent dans formData
-      const hasGPS = Object.keys(transformedFormData).some(key => {
-        const value = transformedFormData[key];
-        if (!value) return false;
-        const valueStr = String(value).trim();
-        if (/geolocalisation/i.test(key) || /GPS/i.test(key)) {
-          if (valueStr.includes(',') || valueStr.includes(';')) {
-            const coords = valueStr.split(/[,;]/).map(c => parseFloat(c.trim()));
-            if (coords.length >= 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-              return true;
-            }
-          }
-          if (typeof value === 'object' && (value.latitude || value.longitude)) {
-            return true;
-          }
-        }
-        return false;
-      });
-
-      // Ajouter les données d'adresse si locationType === 'address'
-      if (locationType === 'address') {
-        // Vérifier que l'adresse est complète
-        if (!addressData.province || !addressData.commune) {
-          setError('❌ Pour utiliser une adresse manuelle, veuillez compléter tous les champs requis : province et commune/quartier.');
-          setSubmitting(false);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-          return;
-        }
-
-        // Ajouter les données d'adresse dans formData avec les clés appropriées
-        // Chercher les clés existantes pour province et commune/quartier
-        const provinceKeys = Object.keys(transformedFormData).filter(key => /province/i.test(key));
-        const communeKeys = Object.keys(transformedFormData).filter(key => /commune/i.test(key) || /quartier/i.test(key));
-        
-        // Si on trouve des clés existantes, utiliser la première
-        if (provinceKeys.length > 0) {
-          transformedFormData[provinceKeys[0]] = addressData.province;
-        } else {
-          // Sinon, utiliser le format standard
-          transformedFormData['identification.province'] = addressData.province;
-        }
-        
-        if (communeKeys.length > 0) {
-          transformedFormData[communeKeys[0]] = showCustomCommune ? customCommune : addressData.commune;
-        } else {
-          transformedFormData['identification.communeQuartier'] = showCustomCommune ? customCommune : addressData.commune;
-        }
-        
-        // Ajouter city et quartier si disponibles
-        if (addressData.city || showCustomCity) {
-          transformedFormData['identification.city'] = showCustomCity ? customCity : addressData.city;
-        }
-        if (addressData.quartier || showCustomQuartier) {
-          transformedFormData['identification.quartier'] = showCustomQuartier ? customQuartier : addressData.quartier;
-        }
-      }
-
-      // Valider la localisation : GPS OU adresse complète (l'un ou l'autre)
-      // Si GPS est présent, c'est valide
-      if (hasGPS) {
-        // GPS présent, validation OK
-      } else if (locationType === 'address') {
-        // Vérifier que l'adresse est complète (déjà vérifié plus haut)
-        // Si on arrive ici, l'adresse est complète
-      } else {
-        // Pas de GPS et locationType === 'gps' mais GPS non capturé
-        // Vérifier si une adresse complète est présente dans formData
-        const provinceKeys = Object.keys(transformedFormData).filter(key => /province/i.test(key));
-        const communeKeys = Object.keys(transformedFormData).filter(key => /commune/i.test(key) || /quartier/i.test(key));
-        
-        const hasValidProvince = provinceKeys.some(key => {
-          const value = transformedFormData[key];
-          return value && String(value).trim() !== '';
-        });
-        
-        const hasValidCommune = communeKeys.some(key => {
-          const value = transformedFormData[key];
-          return value && String(value).trim() !== '';
-        });
-        
-        if (!hasValidProvince || !hasValidCommune) {
-          setError('❌ Veuillez soit capturer votre position GPS, soit compléter une adresse complète (province et commune/quartier) avant de soumettre le formulaire.');
-          setSubmitting(false);
-          const locationField = document.querySelector('[placeholder*="GPS"], [placeholder*="gps"], [placeholder*="Géolocalisation"], [name*="province"], [name*="commune"]');
-          if (locationField) {
-            locationField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            (locationField as HTMLElement).focus();
-          } else {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-          return;
-        }
+      const locationValidation = validateFormLocation(transformedFormData);
+      if (!locationValidation.isValid) {
+        setError(locationValidation.message || 'Localisation requise');
+        setSubmitting(false);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
       }
 
       // Vérifier que les données GPS sont présentes (pour logging)
@@ -529,11 +329,36 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
     return parseFormTemplate(rawFormTemplate);
   }, [linkData]);
 
+  const formHasInlineLocationFields = useMemo(() => {
+    if (!formTemplate?.fields) return false;
+    return formTemplate.fields.some(
+      (field) =>
+        field.type !== 'section' &&
+        field.type !== 'info' &&
+        (isCommuneFormField(field.id, field.label) ||
+          isQuartierFormField(field.id, field.label) ||
+          isGpsFormField(field)),
+    );
+  }, [formTemplate]);
+
   // Mémoriser les champs visibles pour éviter les recalculs
   const visibleFields = useMemo(() => {
     if (!formTemplate || !Array.isArray(formTemplate.fields)) return [];
     return formTemplate.fields.filter((field: FormField) => shouldShowField(field));
   }, [formTemplate, shouldShowField]);
+
+  const { regularFields, gpsFields } = useMemo(() => {
+    const regular: FormField[] = [];
+    const gps: FormField[] = [];
+    visibleFields.forEach((field) => {
+      if (field.type === 'gps' || isGpsFormField(field)) {
+        gps.push(field);
+      } else {
+        regular.push(field);
+      }
+    });
+    return { regularFields: regular, gpsFields: gps };
+  }, [visibleFields]);
 
   // Capture GPS simplifiée - sans détermination automatique de la province
   const captureGPS = useCallback((fieldId: string) => {
@@ -610,10 +435,10 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
         );
       
       case 'gps':
-        // Ne rendre le champ GPS que si locationType === 'gps'
-        if (locationType !== 'gps') {
+        if (!formHasInlineLocationFields && locationType !== 'gps') {
           return null;
         }
+        // GPS toujours visible en bas du formulaire quand intégré au schéma
         return (
           <div className="space-y-3">
             <input
@@ -773,6 +598,7 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
         );
 
       case 'select':
+      case 'dropdown':
         return (
           <select
             id={field.id}
@@ -863,7 +689,7 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
           />
         );
     }
-  }, [formData, handleInputChange, captureGPS]);
+  }, [formData, handleInputChange, captureGPS, formHasInlineLocationFields, locationType]);
 
   if (loading) {
     return (
@@ -1011,7 +837,9 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
               </div>
             </div>
 
-            {/* Choix de localisation : GPS ou Adresse manuelle */}
+            {/* Choix de localisation : uniquement si le formulaire n'a pas déjà commune/quartier/GPS intégrés */}
+            {!formHasInlineLocationFields && (
+            <>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
               <label className="block text-sm font-medium text-slate-700 mb-3">
                 Méthode de localisation *
@@ -1296,10 +1124,12 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
                 )}
               </div>
             )}
+            </>
+            )}
 
             {/* Form Fields */}
             <div className="space-y-6">
-              {visibleFields.map((field: FormField) => {
+              {regularFields.map((field: FormField) => {
 
                 // Vérifier si on doit afficher l'explication pour "Non"
                 // L'explication s'affiche si :
@@ -1338,6 +1168,24 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
                   </div>
                 );
               })}
+
+              {gpsFields.length > 0 && (
+                <div className="border-t-2 border-green-200 pt-6 mt-6 space-y-6">
+                  <h3 className="text-lg font-semibold text-green-700">Géolocalisation *</h3>
+                  <p className="text-sm text-slate-600">
+                    La capture GPS est obligatoire pour valider le formulaire.
+                  </p>
+                  {gpsFields.map((field: FormField) => (
+                    <div key={field.id}>
+                      <label htmlFor={field.id} className="block text-sm font-medium text-slate-700 mb-2">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      {renderField(field)}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Error Message */}

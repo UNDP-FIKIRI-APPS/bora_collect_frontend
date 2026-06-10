@@ -42,6 +42,7 @@ function PrivateRoute({ children, roles }: { children: React.ReactNode; roles: s
     
     if (!userData || !userData.role || !userData.id) {
       localStorage.removeItem('token');
+      localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
       localStorage.removeItem('currentUserId');
       localStorage.removeItem('sessionId');
@@ -51,6 +52,7 @@ function PrivateRoute({ children, roles }: { children: React.ReactNode; roles: s
     if (currentUserId) {
       if (currentUserId !== userData.id) {
         localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
         localStorage.removeItem('currentUserId');
         localStorage.removeItem('sessionId');
@@ -64,8 +66,8 @@ function PrivateRoute({ children, roles }: { children: React.ReactNode; roles: s
       localStorage.setItem('currentUserId', userData.id);
     }
     
-    if (userData.status && userData.status !== 'ACTIVE' && userData.status !== 'PENDING_APPROVAL') {
-      return <Navigate to="/login" />;
+    if (userData.status && userData.status !== 'ACTIVE') {
+      return <Navigate to="/login" state={{ reason: 'account_inactive' }} />;
     }
     
     if (!roles.includes(userData.role)) {
@@ -96,6 +98,7 @@ export default function App() {
               const userData = JSON.parse(currentUser);
               if (userData.id === forceLogoutData.userId || currentUserId === forceLogoutData.userId) {
                 localStorage.removeItem('token');
+                localStorage.removeItem('refresh_token');
                 localStorage.removeItem('user');
                 localStorage.removeItem('currentUserId');
                 localStorage.removeItem('sessionId');

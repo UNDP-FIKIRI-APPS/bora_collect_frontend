@@ -7,6 +7,10 @@ import {
   isFormSchemaV1,
   parseToFormSchemaV1,
 } from '../utils/formSchema';
+import {
+  normalizeSubmissionFormData,
+  validateFormLocation,
+} from '../utils/formValidation';
 import type { FormSchemaV1 } from '../types/formSchema';
 
 interface LinkData {
@@ -76,11 +80,21 @@ export default function PublicFormSchemaView({
   const handleSubmit = async (data: Record<string, unknown>) => {
     setSubmitting(true);
     setError(null);
+
+    const normalizedData = normalizeSubmissionFormData(data);
+    const locationValidation = validateFormLocation(normalizedData);
+    if (!locationValidation.isValid) {
+      setError(locationValidation.message || 'Localisation requise');
+      setSubmitting(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     try {
       await enhancedApiService.post(
         `/public-links/form/${token}/submit`,
         {
-          formData: data,
+          formData: normalizedData,
           submitterName: submitterName || undefined,
           submitterContact: submitterContact || undefined,
         },

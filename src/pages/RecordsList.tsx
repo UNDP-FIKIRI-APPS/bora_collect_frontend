@@ -1,7 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
-import { syncService } from '../services/syncService';
-import { localStorageService } from '../services/localStorageService';
 import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
 import Pagination from '../components/Pagination';
@@ -51,11 +49,6 @@ export default function RecordsList() {
   const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<{
-    pendingCount: number;
-    syncedCount: number;
-    isOnline: boolean;
-  }>({ pendingCount: 0, syncedCount: 0, isOnline: true });
   const [showDetails, setShowDetails] = useState<Record | null>(null);
   const [selectedCampaignForm, setSelectedCampaignForm] = useState<any>(null);
   const [recordsPage, setRecordsPage] = useState(1);
@@ -447,81 +440,25 @@ export default function RecordsList() {
       
       console.log('✅ Enregistrements serveur chargés:', serverRecords.length, serverRecords);
       
-      // Charger les enregistrements locaux
-      const localRecords = await localStorageService.getLocalRecords();
-      console.log('✅ Enregistrements locaux chargés:', localRecords.length);
-      
-      // Filtrer par l'utilisateur connecté (seulement pour les enquêteurs)
+      let filteredRecords = Array.isArray(serverRecords) ? serverRecords : [];
+
       if (user) {
         const userData = JSON.parse(user);
-        
         if (userData.role === 'CONTROLLER') {
-          
-          // Pour les enquêteurs : enregistrements serveur + enregistrements locaux
-          // S'assurer que serverRecords est un tableau avant d'utiliser filter
-          const userServerRecords = Array.isArray(serverRecords) 
-            ? serverRecords.filter((record: any) => record.authorId === currentUserId)
-            : [];
-          console.log('🔍 Enregistrements serveur filtrés par utilisateur:', userServerRecords.length, userServerRecords);
-          
-          // Les enregistrements locaux sont toujours visibles pour l'enquêteur qui les a créés
-          const userLocalRecords = localRecords.filter(lr => !lr.synced);
-          console.log('🔍 Enregistrements locaux non synchronisés:', userLocalRecords.length);
-          
-          // Si une campagne est sélectionnée, filtrer aussi par campagne
-          let filteredRecords = [...userServerRecords, ...userLocalRecords];
-          
-          if (campaignId) {
-            console.log('🔍 Filtrage par campagne:', campaignId);
-            filteredRecords = filteredRecords.filter((record: any) => {
-              // Essayer différentes propriétés pour trouver l'ID de campagne
-              const recordCampaignId = record.surveyId || record.campaignId || record.survey?.id;
-              console.log('🔍 Comparaison campagne:', { 
-                recordCampaignId, 
-                campaignId, 
-                match: recordCampaignId === campaignId,
-                recordSurveyId: record.surveyId,
-                recordCampaignIdProp: record.campaignId,
-                recordSurveyObject: record.survey
-              });
-              return recordCampaignId === campaignId;
-            });
-            console.log('✅ Enregistrements filtrés par campagne:', filteredRecords.length, filteredRecords);
-          }
-          
-          // ✅ VALIDATION DES ENREGISTREMENTS AVANT AFFICHAGE
-          console.log('🔍 Validation des enregistrements avant affichage...');
-          const validRecords = filteredRecords.filter(record => {
-            const isValid = isValidRecord(record);
-            if (!isValid) {
-              console.log('❌ Enregistrement invalide ignoré:', record.id, record);
-            }
-            return isValid;
-          });
-          
-          console.log(`✅ ${validRecords.length} enregistrements valides sur ${filteredRecords.length} total`);
-          setRecords(validRecords);
-        } else {
-          // Les analystes et admins voient tous les enregistrements
-          const allRecords = Array.isArray(serverRecords) 
-            ? [...serverRecords, ...localRecords.filter(lr => !lr.synced)]
-            : [...localRecords.filter(lr => !lr.synced)];
-          setRecords(allRecords);
+          filteredRecords = filteredRecords.filter(
+            (record: any) => record.authorId === currentUserId,
+          );
         }
-      } else {
-        const recordsToSet = Array.isArray(serverRecords)
-          ? [...serverRecords, ...localRecords.filter(lr => !lr.synced)]
-          : [...localRecords.filter(lr => !lr.synced)];
-        setRecords(recordsToSet);
       }
-      
-      // Mettre à jour le statut de synchronisation
-      const status = await syncService.getSyncStatus();
-      setSyncStatus({
-        pendingCount: status.unsyncedCount,
-        syncedCount: status.unsyncedCount === 0 ? records.length : records.length - status.unsyncedCount,
-        isOnline: status.isOnline
-      });
+
+      if (campaignId) {
+        filteredRecords = filteredRecords.filter((record: any) => {
+          const recordCampaignId = record.surveyId || record.campaignId || record.survey?.id;
+          return recordCampaignId === campaignId;
+        });
+      }
+
+      setRecords(filteredRecords.filter((record) => isValidRecord(record)));
     } catch (err: any) {
       console.error('❌ Erreur lors du chargement des enregistrements:', err);
       setError(err.message || 'Erreur lors du chargement');
@@ -530,24 +467,10 @@ export default function RecordsList() {
     }
   };
 
-  // Écouter les changements de synchronisation
   useEffect(() => {
-    const handleSyncUpdate = () => {
-      loadRecords(selectedCampaignId); // Recharger les enregistrements
-    };
-
-    // S'abonner aux mises à jour de synchronisation
-    syncService.onSync(handleSyncUpdate);
-
-    // Charger les enregistrements au montage
     if (currentUserId) {
       loadRecords(selectedCampaignId);
     }
-
-    // Nettoyer l'abonnement
-    return () => {
-      // Note: syncService n'a pas de méthode unsubscribe, mais c'est OK pour ce cas d'usage
-    };
   }, [currentUserId, selectedCampaignId]);
 
   useEffect(() => {
@@ -645,26 +568,6 @@ export default function RecordsList() {
           </div>
         )}
       </div>
-
-      {/* Statut de synchronisation */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800">Statut de Synchronisation</h3>
-            <p className="text-sm text-gray-600">
-              {syncStatus.pendingCount > 0 
-                ? `${syncStatus.pendingCount} enregistrement(s) en attente de synchronisation`
-                : 'Tous les enregistrements sont synchronisés'
-              }
-            </p>
-          </div>
-          <div className="text-right">
-            <span className="text-sm text-gray-600">Connexion:</span>
-            <span className="font-medium">{syncStatus.isOnline ? 'Connecté' : 'Déconnecté'}</span>
-          </div>
-        </div>
-      </div>
-
 
       {/* Tableau des enregistrements */}
       <div className="bg-white rounded-lg shadow overflow-hidden">

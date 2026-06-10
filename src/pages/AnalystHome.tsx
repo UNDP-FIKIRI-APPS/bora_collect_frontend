@@ -16,6 +16,7 @@ import SuccessNotification from '../components/SuccessNotification';
 import PNUDFooter from '../components/PNUDFooter';
 import ConfirmationModal from '../components/ConfirmationModal';
 import Pagination from '../components/Pagination';
+import { performLogout } from '../utils/authStorage';
 import { toast } from 'react-toastify';
 import { environment } from '../config/environment';
 import { getChartColor, getChartColors, CompatibleColors } from '../utils/colors';
@@ -1277,7 +1278,7 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
                 </div>
               )}
               <button 
-                onClick={() => { localStorage.clear(); navigate('/login'); }} 
+                onClick={() => { void performLogout(navigate); }} 
                   className="bg-white text-blue-900 px-1.5 py-1 rounded-lg font-semibold text-xs hover:bg-gray-100 hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 whitespace-nowrap"
               >
                 Déconnexion
@@ -1377,7 +1378,7 @@ const [recordActionMessage, setRecordActionMessage] = useState<string | null>(nu
                 </div>
               )}
               <button 
-                onClick={() => { localStorage.clear(); navigate('/login'); }} 
+                onClick={() => { void performLogout(navigate); }} 
                   className="bg-white text-blue-900 px-4 py-2 rounded-lg font-semibold text-sm hover:bg-gray-100 hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
               >
                 Déconnexion

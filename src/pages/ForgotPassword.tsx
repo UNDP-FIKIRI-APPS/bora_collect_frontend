@@ -34,8 +34,8 @@ const ForgotPassword: React.FC = () => {
       
       setMessage(data.message);
       setStep('code');
-    } catch (err) {
-      setError('Erreur de connexion au serveur');
+    } catch (err: any) {
+      setError(err?.message || 'Erreur de connexion au serveur');
     } finally {
       setLoading(false);
     }
@@ -55,8 +55,8 @@ const ForgotPassword: React.FC = () => {
       
       setStep('newPassword');
       setMessage(''); // Effacer les messages précédents
-    } catch (err) {
-      setError('Erreur de connexion au serveur');
+    } catch (err: any) {
+      setError(err?.message || 'Erreur de connexion au serveur');
     } finally {
       setLoading(false);
     }
@@ -88,8 +88,8 @@ const ForgotPassword: React.FC = () => {
       setStep('success');
       setError(''); // Effacer les erreurs
       setMessage(''); // Effacer les messages
-    } catch (err) {
-      setError('Erreur de connexion au serveur');
+    } catch (err: any) {
+      setError(err?.message || 'Erreur de connexion au serveur');
     } finally {
       setLoading(false);
     }
@@ -108,8 +108,8 @@ const ForgotPassword: React.FC = () => {
       
       setMessage('Un nouveau code a été envoyé');
       setCode('');
-    } catch (err) {
-      setError('Erreur lors du renvoi du code');
+    } catch (err: any) {
+      setError(err?.message || 'Erreur lors du renvoi du code');
     } finally {
       setLoading(false);
     }

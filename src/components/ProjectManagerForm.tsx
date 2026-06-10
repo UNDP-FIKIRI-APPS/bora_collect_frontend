@@ -136,22 +136,29 @@ const ProjectManagerForm: React.FC<ProjectManagerFormProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${environment.apiBaseUrl}/users/register`, {
+      const endpoint = isAdmin ? '/users' : '/users/register-pm';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      const token = localStorage.getItem('token');
+      if (isAdmin && token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${environment.apiBaseUrl}${endpoint}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           name: formData.name,
           email: formData.email,
           password: formData.password,
-          role: 'PROJECT_MANAGER', // Project Manager role
+          role: 'PROJECT_MANAGER',
           contact: formData.contact || undefined,
           whatsapp: formData.whatsapp || undefined,
           organization: formData.organization,
           campaignDescription: formData.campaignDescription,
           targetProvinces: formData.targetProvinces,
-          selectedODD: formData.selectedODD
+          selectedODD: formData.selectedODD,
         }),
       });
 

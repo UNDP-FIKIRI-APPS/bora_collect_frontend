@@ -217,8 +217,17 @@ const CreateAccount = () => {
       navigate('/account-created', { 
         state: { email: formData.email } 
       });
-    } catch (err) {
-      setError('Erreur de connexion au serveur');
+    } catch (err: any) {
+      const message = err?.message || 'Erreur de connexion au serveur';
+      if (
+        message.includes('fetch') ||
+        message.includes('network') ||
+        message.includes('Failed to fetch')
+      ) {
+        setError('Connexion au serveur impossible. Vérifiez votre réseau et réessayez.');
+      } else {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
     }

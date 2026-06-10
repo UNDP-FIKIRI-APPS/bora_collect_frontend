@@ -11,6 +11,7 @@ interface CacheEntry<T> {
 interface RequestOptions extends RequestInit {
   skipAuth?: boolean;
   skipCache?: boolean;
+  skipToast?: boolean;
   retry?: number;
   retryDelay?: number;
 }
@@ -282,13 +283,16 @@ class EnhancedApiService {
     const {
       skipAuth = false,
       skipCache = false,
+      skipToast = false,
       retry = this.MAX_RETRIES,
       retryDelay = this.RETRY_DELAY,
       ...fetchOptions
     } = options;
 
     // Vérifier le cache pour les requêtes GET
-    if (!skipCache && fetchOptions.method === 'GET' || !fetchOptions.method) {
+    const isGet = !fetchOptions.method || fetchOptions.method === 'GET';
+    const shouldUseCache = !skipCache && isGet && !url.includes('/auth/') && !url.includes('/public-links/');
+    if (shouldUseCache) {
       const cacheKey = this.getCacheKey(url, options);
       const cached = this.cache.get(cacheKey);
       
@@ -309,8 +313,9 @@ class EnhancedApiService {
     const requestPromise = (async () => {
       try {
         // Ajouter le token d'authentification
+        const isFormData = fetchOptions.body instanceof FormData;
         const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
+          ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
           ...(fetchOptions.headers as Record<string, string> || {}),
         };
 
@@ -397,8 +402,13 @@ class EnhancedApiService {
         // Logger l'erreur
         console.error(`❌ API Error [${fetchOptions.method || 'GET'} ${url}]:`, error);
 
-        // Afficher un toast pour les erreurs critiques
-        if (error.message && !error.message.includes('UNAUTHORIZED_RETRY')) {
+        // Toast uniquement pour les requêtes authentifiées (login/reset gèrent leurs propres erreurs)
+        if (
+          error.message &&
+          !error.message.includes('UNAUTHORIZED_RETRY') &&
+          !skipAuth &&
+          !skipToast
+        ) {
           toast.error(error.message);
         }
 

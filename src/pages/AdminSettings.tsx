@@ -33,6 +33,11 @@ const AdminSettings: React.FC = () => {
   const [customQuartier, setCustomQuartier] = useState('');
   const [showCustomQuartier, setShowCustomQuartier] = useState(false);
   const [photoDeletedLocally, setPhotoDeletedLocally] = useState(false);
+  const [activeCampaigns, setActiveCampaigns] = useState<
+    Array<{ id: string; title: string; endDate?: string | null }>
+  >([]);
+  const [purgeCampaignId, setPurgeCampaignId] = useState('');
+  const [purgingData, setPurgingData] = useState(false);
 
   // Charger les données utilisateur au montage du composant
   useEffect(() => {
@@ -77,6 +82,83 @@ const AdminSettings: React.FC = () => {
 
     loadUserData();
   }, []);
+
+  useEffect(() => {
+    const loadActiveCampaigns = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const response = await fetch(`${environment.apiBaseUrl}/surveys/admin`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!response.ok) return;
+
+        const surveys = await response.json();
+        const now = Date.now();
+        const ongoing = (Array.isArray(surveys) ? surveys : []).filter((survey: any) => {
+          if (survey.status !== 'PUBLISHED') return false;
+          if (!survey.endDate) return true;
+          return new Date(survey.endDate).getTime() >= now;
+        });
+        setActiveCampaigns(
+          ongoing.map((survey: any) => ({
+            id: survey.id,
+            title: survey.title,
+            endDate: survey.endDate,
+          })),
+        );
+      } catch (error) {
+        console.error('Erreur chargement campagnes actives:', error);
+      }
+    };
+
+    loadActiveCampaigns();
+  }, []);
+
+  const handlePurgeCampaignData = async () => {
+    if (!purgeCampaignId) return;
+
+    const selected = activeCampaigns.find((campaign) => campaign.id === purgeCampaignId);
+    const confirmed = window.confirm(
+      `Supprimer toutes les données collectées pour « ${selected?.title || 'cette campagne'} » ?\n\n` +
+        'Cette action efface les soumissions enquêteurs et formulaires publics. La campagne et ses formulaires seront conservés.',
+    );
+    if (!confirmed) return;
+
+    setPurgingData(true);
+    setMessage('');
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `${environment.apiBaseUrl}/surveys/${purgeCampaignId}/purge-data`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Échec de la suppression des données');
+      }
+
+      setMessage(
+        `${result.message} (${result.recordsDeleted} enquêtes, ${result.publicSubmissionsDeleted} soumissions publiques supprimées)`,
+      );
+      setMessageType('success');
+      setPurgeCampaignId('');
+    } catch (error: any) {
+      setMessage(error.message || 'Erreur lors de la suppression des données');
+      setMessageType('error');
+    } finally {
+      setPurgingData(false);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -871,6 +953,45 @@ const AdminSettings: React.FC = () => {
             {loading ? 'Mise à jour...' : 'Mettre à jour l\'identité'}
           </button>
         </form>
+      </div>
+
+      {/* Suppression des données de campagne */}
+      <div className="bg-white p-6 rounded-lg shadow border border-red-100 mb-6">
+        <h2 className="text-xl font-semibold mb-2 text-red-700">Suppression des données de campagne</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Efface toutes les soumissions liées à une campagne <strong>publiée et en cours</strong>
+          (enquêteurs + formulaires publics). La campagne, ses formulaires et ses utilisateurs sont conservés.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+          <div>
+            <label htmlFor="purgeCampaignId" className="block text-sm font-medium text-gray-700 mb-2">
+              Campagne en cours
+            </label>
+            <select
+              id="purgeCampaignId"
+              value={purgeCampaignId}
+              onChange={(e) => setPurgeCampaignId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+            >
+              <option value="">Sélectionnez une campagne</option>
+              {activeCampaigns.map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>
+                  {campaign.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={handlePurgeCampaignData}
+            disabled={!purgeCampaignId || purgingData}
+            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {purgingData ? 'Suppression...' : 'Supprimer toutes les données'}
+          </button>
+        </div>
       </div>
 
       {/* Informations système */}

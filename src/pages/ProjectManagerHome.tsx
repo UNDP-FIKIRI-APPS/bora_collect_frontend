@@ -5,6 +5,7 @@ import FormBuilder from '../components/FormBuilder';
 import PNUDFooter from '../components/PNUDFooter';
 import NotificationPanel from '../components/NotificationPanel';
 import { environment } from '../config/environment';
+import { performLogout } from '../utils/authStorage';
 
 // Lazy loading pour toutes les pages PM
 const DashboardPM = lazy(() => import('./pm/DashboardPM'));
@@ -386,7 +387,7 @@ const ProjectManagerHome = () => {
                   </div>
                 )}
                 <button 
-                  onClick={() => { localStorage.clear(); navigate('/login'); }} 
+                  onClick={() => { void performLogout(navigate); }} 
                   className="bg-white text-blue-900 px-1.5 py-1 rounded-lg font-semibold text-xs hover:bg-gray-100 hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 whitespace-nowrap"
                 >
                   Déconnexion
@@ -516,7 +517,7 @@ const ProjectManagerHome = () => {
                   </div>
                 )}
                 <button 
-                  onClick={() => { localStorage.clear(); navigate('/login'); }} 
+                  onClick={() => { void performLogout(navigate); }} 
                   className="bg-white text-blue-900 px-4 py-2 rounded-lg font-semibold text-sm hover:bg-gray-100 hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
                 >
                   Déconnexion

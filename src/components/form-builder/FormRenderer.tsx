@@ -140,6 +140,7 @@ function BlockInput({
         <div>
           {label}
           <select
+            id={block.id}
             className={baseClass}
             value={String(value ?? '')}
             onChange={(e) => onChange?.(e.target.value)}
@@ -347,7 +348,22 @@ function BlockInput({
   }
 }
 
-function validatePage(
+function isBlockValueEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') {
+    return (
+      Object.keys(value).length === 0 ||
+      Object.values(value).every(
+        (entry) => !entry || (typeof entry === 'string' && entry.trim() === ''),
+      )
+    );
+  }
+  return false;
+}
+
+function validateBlocks(
   blocks: FormBlock[],
   formData: Record<string, unknown>,
 ): string | null {
@@ -355,11 +371,8 @@ function validatePage(
     if (!evaluateConditional(block.conditional, formData)) continue;
     if (block.type === 'hidden' || block.type === 'calculated') continue;
     if (['heading', 'paragraph', 'divider', 'page_break'].includes(block.type)) continue;
-    if (block.required) {
-      const v = formData[block.id];
-      if (v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) {
-        return `Le champ « ${block.label} » est obligatoire`;
-      }
+    if (block.required && isBlockValueEmpty(formData[block.id])) {
+      return `Le champ « ${block.label} » est obligatoire`;
     }
   }
   return null;
@@ -400,12 +413,22 @@ export default function FormRenderer({
     [onChange],
   );
 
-  const visibleBlocks = currentPage.filter((block) =>
-    evaluateConditional(block.conditional, computedData),
-  );
+  const visibleBlocks = currentPage
+    .filter((block) => evaluateConditional(block.conditional, computedData))
+    .sort((a, b) => {
+      const aIsGps = a.type === 'gps' ? 1 : 0;
+      const bIsGps = b.type === 'gps' ? 1 : 0;
+      return aIsGps - bIsGps;
+    });
 
   const handleNext = () => {
-    const err = validatePage(visibleBlocks, computedData);
+    const err =
+      pageIndex < pages.length - 1
+        ? validateBlocks(visibleBlocks, computedData)
+        : validateBlocks(
+            schema.blocks.filter((block) => evaluateConditional(block.conditional, computedData)),
+            computedData,
+          );
     if (err) {
       setValidationError(err);
       return;

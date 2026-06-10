@@ -1,5 +1,5 @@
 // Service Worker PWA — cache léger, compatible tous navigateurs
-const STATIC_CACHE_NAME = 'fikiri-static-v4';
+const STATIC_CACHE_NAME = 'fikiri-static-v5';
 
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 

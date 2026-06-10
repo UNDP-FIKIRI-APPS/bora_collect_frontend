@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { toast } from 'react-toastify';
 import { Loader2 } from 'lucide-react';
 import { environment } from '../config/environment';
-import { localStorageService } from '../services/localStorageService';
 import LocationInput from '../components/LocationInput';
 import {
   evaluateConditional,
@@ -201,31 +200,12 @@ const ControllerCampaignForms: React.FC = () => {
       options
     );
   };
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [offlineSubmissions, setOfflineSubmissions] = useState<any[]>([]);
-
   const apiBaseUrl = environment.apiBaseUrl;
 
   useEffect(() => {
     fetchApprovedCampaigns();
-    
-    // Écouter les changements de connectivité
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    // Charger les soumissions hors ligne sauvegardées
-    const savedSubmissions = localStorage.getItem('offlineSubmissions');
-    if (savedSubmissions) {
-      setOfflineSubmissions(JSON.parse(savedSubmissions));
-    }
-    
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+    localStorage.removeItem('offlineSubmissions');
+    localStorage.removeItem('local_records');
   }, []);
 
   const fetchApprovedCampaigns = async () => {
@@ -498,31 +478,6 @@ const ControllerCampaignForms: React.FC = () => {
                         /GPS/i.test(field.label || '');
       
       if (isGPSField) {
-        // Vérifier si le GPS est présent dans l'état ou dans formData
-        const hasGPSInState = gpsState.latitude !== null && 
-                             gpsState.longitude !== null && 
-                             !isNaN(gpsState.latitude) && 
-                             !isNaN(gpsState.longitude);
-        
-        const hasGPSInData = Object.keys(data).some(key => {
-          if (!/geolocalisation/i.test(key) && !/GPS/i.test(key)) return false;
-          const value = data[key];
-          if (!value) return false;
-          const valueStr = String(value).trim();
-          if (valueStr.includes(',') || valueStr.includes(';')) {
-            const coords = valueStr.split(/[,;]/).map(c => parseFloat(c.trim()));
-            return coords.length >= 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
-          }
-          return valueStr !== '';
-        });
-        
-        // Si le GPS est présent (dans l'état ou dans les données), on continue
-        // Sinon, on laisse validateLocation gérer l'erreur
-        if (hasGPSInState || hasGPSInData) {
-          continue;
-        }
-        // Si le GPS n'est pas présent, on continue quand même car validateLocation le vérifiera
-        // On ne bloque pas ici pour permettre la validation de l'adresse manuelle
         continue;
       }
 
@@ -603,123 +558,43 @@ const ControllerCampaignForms: React.FC = () => {
       surveyId: selectedCampaignId,
       formData: submissionFormData,
       submittedAt: new Date().toISOString(),
-      isOnline: isOnline
     };
 
-    if (isOnline) {
-      // Soumission en ligne
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`${apiBaseUrl}/records`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(submissionData),
-        });
-
-        if (response.ok) {
-          toast.success('Formulaire soumis avec succès !');
-          setFormData({});
-          handleBackToSelection();
-          
-          // Déclencher un événement pour notifier les interfaces PM/Admin
-          const event = new CustomEvent('newRecordSubmitted', {
-            detail: {
-              surveyId: selectedCampaignId,
-              timestamp: new Date().toISOString()
-            }
-          });
-          window.dispatchEvent(event);
-          console.log('🔔 Événement newRecordSubmitted déclenché');
-        } else {
-          throw new Error('Erreur lors de la soumission');
-        }
-      } catch (error) {
-        console.error('Erreur soumission en ligne:', error);
-        // En cas d'erreur, sauvegarder hors ligne
-        saveOfflineSubmission(submissionData);
-      }
-    } else {
-      // Soumission hors ligne
-      saveOfflineSubmission(submissionData);
-    }
-  };
-
-  const saveOfflineSubmission = async (submissionData: any) => {
-    // VALIDATION GPS OBLIGATOIRE même en mode hors ligne
-    const hasGPS = geolocation.latitude !== null && 
-                   geolocation.longitude !== null && 
-                   !isNaN(geolocation.latitude) && 
-                   !isNaN(geolocation.longitude);
-    
-    const gpsInFormData = Object.keys(submissionData.formData || {}).some(key => 
-      /geolocalisation/i.test(key) && submissionData.formData[key] && submissionData.formData[key].trim() !== ''
-    );
-
-    const provinceInPayload = submissionData.formData?.['household.provinceFromGPS'] && submissionData.formData['household.provinceFromGPS'].trim() !== '';
-    if (!hasGPS && !gpsInFormData) {
-      toast.error('❌ Veuillez capturer votre position GPS avant de sauvegarder le formulaire.');
-      const gpsField = document.querySelector('[placeholder*="GPS"], [placeholder*="gps"], [placeholder*="Géolocalisation"]');
-      if (gpsField) {
-        gpsField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        (gpsField as HTMLElement).focus();
-      }
-      return;
-    }
-
     try {
-      // Utiliser le localStorageService pour sauvegarder avec le surveyId
-      await localStorageService.saveRecord(submissionData.formData, submissionData.surveyId);
-      
-      // Mettre à jour l'état local pour l'affichage
-      const newSubmissions = [...offlineSubmissions, submissionData];
-      setOfflineSubmissions(newSubmissions);
-      localStorage.setItem('offlineSubmissions', JSON.stringify(newSubmissions));
-      
-      toast.success('Formulaire sauvegardé hors ligne. Il sera envoyé quand vous serez connecté.');
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${apiBaseUrl}/records`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(submissionData),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.message || 'Erreur lors de la soumission');
+      }
+
+      toast.success('Formulaire soumis avec succès !');
       setFormData({});
       handleBackToSelection();
-    } catch (error) {
-      console.error('Erreur lors de la sauvegarde hors ligne:', error);
-      toast.error('Erreur lors de la sauvegarde hors ligne');
-    }
-  };
 
-  const syncOfflineSubmissions = async () => {
-    if (!isOnline || offlineSubmissions.length === 0) return;
-
-    const token = localStorage.getItem('token');
-    const successfulSubmissions: number[] = [];
-
-    for (let i = 0; i < offlineSubmissions.length; i++) {
-      try {
-        const response = await fetch(`${apiBaseUrl}/records`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
+      window.dispatchEvent(
+        new CustomEvent('newRecordSubmitted', {
+          detail: {
+            surveyId: selectedCampaignId,
+            timestamp: new Date().toISOString(),
           },
-          body: JSON.stringify(offlineSubmissions[i]),
-        });
-
-        if (response.ok) {
-          successfulSubmissions.push(i);
-        }
-      } catch (error) {
-        console.error('Erreur synchronisation:', error);
-      }
-    }
-
-    // Supprimer les soumissions réussies
-    if (successfulSubmissions.length > 0) {
-      const remainingSubmissions = offlineSubmissions.filter((_, index) => 
-        !successfulSubmissions.includes(index)
+        }),
       );
-      setOfflineSubmissions(remainingSubmissions);
-      localStorage.setItem('offlineSubmissions', JSON.stringify(remainingSubmissions));
-      toast.success(`${successfulSubmissions.length} formulaire(s) synchronisé(s) avec succès !`);
+    } catch (error: any) {
+      console.error('Erreur soumission:', error);
+      toast.error(
+        error?.message?.includes('fetch') || error?.message?.includes('network')
+          ? 'Connexion instable. Vérifiez votre réseau et réessayez.'
+          : error?.message || 'Erreur lors de la soumission',
+      );
     }
   };
 
@@ -812,32 +687,6 @@ const ControllerCampaignForms: React.FC = () => {
               <span>←</span>
               <span>Retour à la sélection</span>
             </button>
-            
-            {/* Indicateur de connectivité */}
-            <div className="flex items-center gap-4 mb-4">
-              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
-                isOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-              }`}>
-                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                {isOnline ? 'En ligne' : 'Hors ligne'}
-              </div>
-              
-              {offlineSubmissions.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">
-                    {offlineSubmissions.length} formulaire(s) en attente
-                  </span>
-                  {isOnline && (
-                    <button
-                      onClick={syncOfflineSubmissions}
-                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                    >
-                      Synchroniser
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
             
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               Formulaire Principal de Collecte (Cuisson Propre)

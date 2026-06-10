@@ -169,12 +169,16 @@ const PMApprovalRequests: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
     }
   };
 
-  const handleApproval = async (userId: string, action: 'approve' | 'reject') => {
-    setApproving(userId);
+  const handleApproval = async (user: PendingUser, action: 'approve' | 'reject') => {
+    const applicationId = user.surveyApplications?.[0]?.id;
+    if (!applicationId) {
+      toast.error('Aucune candidature en attente trouvée pour cet utilisateur');
+      return;
+    }
+
+    setApproving(user.id);
     try {
-      const token = localStorage.getItem('token');
-      // Utilisation du nouveau service API
-      await enhancedApiService.post(`/users/${userId}/pm-approve`, {
+      await enhancedApiService.post(`/surveys/applications/${applicationId}/pm-review`, {
         action: action === 'approve' ? 'APPROVE' : 'REJECT',
         comments: comments.trim() || undefined,
       });
@@ -188,8 +192,8 @@ const PMApprovalRequests: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
       
       // Déclencher un événement pour mettre à jour la page enquêteur si c'est une approbation
       if (action === 'approve') {
-        window.dispatchEvent(new CustomEvent('enumeratorApproved', { 
-          detail: { userId } 
+        window.dispatchEvent(new CustomEvent('enumeratorApproved', {
+          detail: { userId: user.id },
         }));
       }
       
@@ -197,8 +201,8 @@ const PMApprovalRequests: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
       setShowModal(false);
       setSelectedUser(null);
       setComments('');
-    } catch (error) {
-      toast.error('Erreur de connexion au serveur');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     } finally {
       setApproving(null);
     }
@@ -677,7 +681,7 @@ const PMApprovalRequests: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                   Annuler
                 </button>
                 <button
-                  onClick={() => handleApproval(selectedUser.id, action)}
+                  onClick={() => selectedUser && handleApproval(selectedUser, action)}
                   disabled={approving === selectedUser.id}
                   className={`px-4 py-2 rounded-md text-white transition-colors ${
                     action === 'approve'

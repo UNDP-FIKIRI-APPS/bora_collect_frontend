@@ -7,6 +7,7 @@ import ObjectiveAlerts from '../components/ObjectiveAlerts';
 import ObjectiveProjection from '../components/ObjectiveProjection';
 import PNUDFooter from '../components/PNUDFooter';
 import { environment } from '../config/environment';
+import { performLogout } from '../utils/authStorage';
 
 // Lazy loading pour toutes les pages Controller
 const ControllerCampaignForms = lazy(() => import('./ControllerCampaignForms'));
@@ -894,7 +895,7 @@ export default function ControllerHome() {
                   </div>
                 )}
                 <button 
-                  onClick={() => { localStorage.clear(); navigate('/login'); }} 
+                  onClick={() => { void performLogout(navigate); }} 
                   className="bg-white text-blue-900 px-4 py-2 rounded-lg font-semibold text-sm hover:bg-gray-100 hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
                 >
                   Déconnexion
@@ -1009,7 +1010,7 @@ export default function ControllerHome() {
                   </div>
                 )}
                 <button 
-                  onClick={() => { localStorage.clear(); navigate('/login'); }} 
+                  onClick={() => { void performLogout(navigate); }} 
                   className="bg-white text-blue-900 px-4 py-2 rounded-lg font-semibold text-sm hover:bg-gray-100 hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
                 >
                   Déconnexion

@@ -33,8 +33,9 @@ const Login = () => {
         refresh_token?: string;
         session_id?: string;
         user: any;
-      }>(loginEndpoint, { email: username, password }, {
-        skipAuth: true, // Pas de token pour le login
+      }>(loginEndpoint, { email: username, password       }, {
+        skipAuth: true,
+        skipToast: true,
       });
         
         // Vérifier si un autre compte est déjà connecté sur ce navigateur
@@ -60,20 +61,6 @@ const Login = () => {
           // Stocker forceLogout pour notifier les autres onglets
           window.localStorage.setItem('forceLogout', JSON.stringify(forceLogoutData));
           
-          // Déclencher l'événement de déconnexion pour les autres onglets
-          // Note: L'événement storage n'est pas déclenché dans l'onglet courant
-          // On doit donc utiliser un délai pour permettre la propagation
-          setTimeout(() => {
-            window.dispatchEvent(new StorageEvent('storage', {
-              key: 'forceLogout',
-              newValue: JSON.stringify(forceLogoutData),
-              oldValue: null
-            }));
-          }, 50);
-          
-          // Attendre un peu pour que les autres onglets reçoivent l'événement
-          // avant de changer les données dans cet onglet
-          await new Promise(resolve => setTimeout(resolve, 150));
         }
         
         // Stocker le nouvel identifiant de session
@@ -127,21 +114,16 @@ const Login = () => {
             navigate('/');
         }
     } catch (err: any) {
-      console.error('❌ Erreur réseau:', err);
-      // Afficher le message d'erreur du serveur s'il existe
+      console.error('❌ Erreur connexion:', err);
       const errorMessage = err?.message || 'Erreur de connexion au serveur';
-      
-      // Si le message contient "Identifiants incorrects" ou similaire, l'afficher tel quel
-      if (errorMessage.includes('Identifiants incorrects') || 
-          errorMessage.includes('incorrects') ||
-          errorMessage.includes('incorrect')) {
-        setError('L\'adresse email ou le mot de passe est incorrect');
-      } else if (errorMessage.includes('Session expirée')) {
-        setError('Session expirée. Veuillez vous reconnecter.');
-      } else if (errorMessage.includes('verrouillé') || errorMessage.includes('Trop de tentatives')) {
-        setError(errorMessage);
+      if (
+        errorMessage.includes('fetch') ||
+        errorMessage.includes('network') ||
+        errorMessage.includes('Failed to fetch')
+      ) {
+        setError('Connexion au serveur impossible. Vérifiez votre réseau et réessayez.');
       } else {
-        setError('L\'adresse email ou le mot de passe est incorrect');
+        setError(errorMessage);
       }
     } finally {
       setIsLoading(false);
