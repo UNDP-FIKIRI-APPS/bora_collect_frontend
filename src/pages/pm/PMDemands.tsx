@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import NotificationBadge from '../../components/NotificationBadge';
-import { environment } from '../../config/environment';
+import enhancedApiService from '../../services/enhancedApiService';
+import { devLogger } from '../../utils/logger';
+
 
 interface PMDemandsProps {
   onNavigateToApprovalRequests?: () => void;
@@ -19,23 +21,8 @@ const PMDemands: React.FC<PMDemandsProps> = ({
   // Fonction pour charger les compteurs de demandes en attente
   const fetchPendingCounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const res = await fetch(`${environment.apiBaseUrl}/surveys/pm-pending-counts`, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-      });
-      
-      if (!res.ok) {
-        console.error('❌ Erreur lors du chargement des compteurs:', res.status, res.statusText);
-        return;
-      }
-      
-      const data = await res.json();
-      console.log('🔔 PM Demands - Compteurs mis à jour:', data);
+      const data = await enhancedApiService.get<any>('/surveys/pm-pending-counts', { skipCache: true });
+      devLogger.log('🔔 PM Demands - Compteurs mis à jour:', data);
       setPendingCounts(data);
     } catch (err: any) {
       console.error('❌ Erreur lors du chargement des compteurs:', err.message);
@@ -49,12 +36,12 @@ const PMDemands: React.FC<PMDemandsProps> = ({
 
     // Écouter les événements de nouvelle demande
     const handleNewApplication = () => {
-      console.log('🔔 PM Demands - Nouvelle demande détectée, rafraîchissement des compteurs');
+      devLogger.log('🔔 PM Demands - Nouvelle demande détectée, rafraîchissement des compteurs');
       fetchPendingCounts();
     };
 
     const handleNewRecord = () => {
-      console.log('🔔 PM Demands - Nouveau record détecté, rafraîchissement des compteurs');
+      devLogger.log('🔔 PM Demands - Nouveau record détecté, rafraîchissement des compteurs');
       fetchPendingCounts();
     };
 
@@ -73,7 +60,7 @@ const PMDemands: React.FC<PMDemandsProps> = ({
     if (onNavigateToApprovalRequests) {
       onNavigateToApprovalRequests();
     } else {
-      console.log('Navigation vers les demandes d\'inscription - fonction non définie');
+      devLogger.log('Navigation vers les demandes d\'inscription - fonction non définie');
     }
   };
 
@@ -81,7 +68,7 @@ const PMDemands: React.FC<PMDemandsProps> = ({
     if (onNavigateToApplicationReview) {
       onNavigateToApplicationReview();
     } else {
-      console.log('Navigation vers les candidatures - fonction non définie');
+      devLogger.log('Navigation vers les candidatures - fonction non définie');
     }
   };
 

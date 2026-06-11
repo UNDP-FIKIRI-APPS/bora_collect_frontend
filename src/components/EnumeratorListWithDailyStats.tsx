@@ -60,9 +60,6 @@ export default function EnumeratorListWithDailyStats({ onViewForms }: Enumerator
   useEffect(() => {
     const fetchEnumerators = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
         // Utilisation du nouveau service API
         const data = await enhancedApiService.get<{ enumerators: any[] }>('/validation/enumerators-stats', {
           skipCache: true, // Forcer le refresh pour les stats

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { environment } from '../config/environment';
 import { getCitiesByProvince, getCommunesByCity } from '../data/citiesData';
-import { getQuartiersByCommune } from '../data/quartiersData';
+import { useQuartiers } from '../hooks/useQuartiers';
 
 interface UserCreationFormProps {
   onSubmit: (data: any) => Promise<void>;
@@ -44,6 +44,7 @@ const UserCreationForm: React.FC<UserCreationFormProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
+  const quartiers = useQuartiers(formData.province, formData.city, formData.commune);
 
   const handleRoleSelection = (role: 'CONTROLLER' | 'ANALYST') => {
     setSelectedRole(role);
@@ -428,7 +429,7 @@ const UserCreationForm: React.FC<UserCreationFormProps> = ({
                   required
                 >
                   <option value="">Sélectionnez le quartier</option>
-                  {getQuartiersByCommune(formData.province, formData.city, formData.commune).map((quartier, index) => (
+                  {quartiers.map((quartier, index) => (
                     <option key={index} value={quartier}>
                       {quartier}
                     </option>

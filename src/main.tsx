@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import ErrorBoundary from './components/ErrorBoundary.tsx'
+import { initSentry } from './monitoring/sentry'
+
+initSentry()
 
 // Désactiver le cache PWA / mode hors ligne
 if ('serviceWorker' in navigator) {
@@ -13,8 +16,9 @@ if ('serviceWorker' in navigator) {
     caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
   }
 }
-localStorage.removeItem('offlineSubmissions');
-localStorage.removeItem('local_records');
+['offlineSubmissions', 'local_records', 'sync_status'].forEach((key) => {
+  localStorage.removeItem(key);
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

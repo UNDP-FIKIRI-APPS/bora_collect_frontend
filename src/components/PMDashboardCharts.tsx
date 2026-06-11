@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Bar } from '../lib/chartSetup';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 import { getChartColor, CompatibleColors } from '../utils/colors';
+import { devLogger } from '../utils/logger';
+
 
 interface PMDashboardChartsProps {
   personalStats?: any;
@@ -339,68 +341,25 @@ export default function PMDashboardCharts({
           : generateRespondentsByGenderData(selectedPeriod, startDate, endDate);
         
         // Récupérer les vraies données depuis l'API
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        // Construire l'URL avec les paramètres de filtre
-        let recordsUrl = `${environment.apiBaseUrl}/records/pm-records`;
         const params = new URLSearchParams();
-        
         if (selectedCampaign && selectedCampaign !== 'all') {
           params.append('campaignId', selectedCampaign);
         }
-        
-        if (params.toString()) {
-          recordsUrl += `?${params.toString()}`;
-        }
-        
-        console.log('📊 PMDashboardCharts - URL des records:', recordsUrl);
-        
-        // Récupérer les records (enquêtes) du PM pour analyser les répondants
-        const recordsResponse = await fetch(recordsUrl, {
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          },
-          cache: 'no-store'
-        });
+        const recordsPath = `/records/pm-records${params.toString() ? `?${params.toString()}` : ''}`;
+        devLogger.log('📊 PMDashboardCharts - URL des records:', recordsPath);
 
-        if (recordsResponse.ok) {
-          // Vérifier si la réponse a du contenu avant de parser le JSON
-          const responseText = await recordsResponse.text();
-          let records;
-          
-          if (responseText && responseText.trim()) {
-            try {
-              records = JSON.parse(responseText);
-            } catch (parseError) {
-              console.error('❌ Erreur lors du parsing JSON:', parseError);
-              console.error('❌ Contenu de la réponse:', responseText);
-              setChartData({
-                campaignsByPeriod: periodInfo.data,
-                title: periodInfo.title,
-                xAxisLabel: periodInfo.xAxisLabel,
-                total: 0,
-                noData: true,
-                message: 'Erreur lors du chargement des données'
-              });
-              return;
-            }
-          } else {
-            // Réponse vide
-            records = [];
-          }
-          
-          console.log('📊 PMDashboardCharts - Records reçus:', records);
-          console.log('📊 PMDashboardCharts - Période sélectionnée:', selectedPeriod);
-          console.log('📊 PMDashboardCharts - Type de répondant:', selectedRespondentType);
-          console.log('📊 PMDashboardCharts - Campagne sélectionnée:', selectedCampaign);
+        const records = await enhancedApiService.get<any[]>(recordsPath, { skipCache: true });
+          const recordsArray = Array.isArray(records) ? records : [];
+
+          devLogger.log('📊 PMDashboardCharts - Records reçus:', recordsArray);
+          devLogger.log('📊 PMDashboardCharts - Période sélectionnée:', selectedPeriod);
+          devLogger.log('📊 PMDashboardCharts - Type de répondant:', selectedRespondentType);
+          devLogger.log('📊 PMDashboardCharts - Campagne sélectionnée:', selectedCampaign);
           
           // Si pas de records, afficher un état vide avec message informatif
-          if (!records || records.length === 0) {
-            console.log('📊 PMDashboardCharts - Aucun record trouvé');
-            console.log('💡 Cela signifie qu\'aucun enquêteur n\'a encore soumis de formulaires pour vos campagnes');
+          if (!recordsArray.length) {
+            devLogger.log('📊 PMDashboardCharts - Aucun record trouvé');
+            devLogger.log('💡 Cela signifie qu\'aucun enquêteur n\'a encore soumis de formulaires pour vos campagnes');
             setChartData({
               campaignsByPeriod: periodInfo.data,
               title: periodInfo.title,
@@ -413,24 +372,24 @@ export default function PMDashboardCharts({
           }
           
           // Filtrer les records selon le type de répondant (le filtrage par statut se fait côté backend)
-          let filteredRecords = records;
+          let filteredRecords = recordsArray;
           if (selectedRespondentType !== 'all') {
-            console.log('🔍 Filtrage par type de répondant:', selectedRespondentType);
-            filteredRecords = records.filter((record: any) => {
+            devLogger.log('🔍 Filtrage par type de répondant:', selectedRespondentType);
+            filteredRecords = recordsArray.filter((record: any) => {
               const formData = record.formData;
               if (!formData) {
-                console.log('❌ Record sans formData:', record.id);
+                devLogger.log('❌ Record sans formData:', record.id);
                 return false;
               }
               
               // Chercher le champ sexe dans les données du formulaire (nouveau et ancien format)
               const sexe = formData['identification.sexe'] || formData.sexe || formData.household?.sexe;
               
-              console.log(`🔍 Record ${record.id} - Sexe trouvé:`, sexe);
-              console.log(`🔍 Record ${record.id} - FormData keys:`, Object.keys(formData));
+              devLogger.log(`🔍 Record ${record.id} - Sexe trouvé:`, sexe);
+              devLogger.log(`🔍 Record ${record.id} - FormData keys:`, Object.keys(formData));
               
               if (!sexe) {
-                console.log('❌ Record sans champ sexe:', record.id);
+                devLogger.log('❌ Record sans champ sexe:', record.id);
                 return false;
               }
               
@@ -450,18 +409,18 @@ export default function PMDashboardCharts({
                   matches = true;
               }
               
-              console.log(`🔍 Record ${record.id} - Match ${selectedRespondentType}:`, matches);
+              devLogger.log(`🔍 Record ${record.id} - Match ${selectedRespondentType}:`, matches);
               return matches;
             });
           }
           
-          console.log('📊 PMDashboardCharts - Records filtrés:', filteredRecords.length);
+          devLogger.log('📊 PMDashboardCharts - Records filtrés:', filteredRecords.length);
           
           // Compter les records selon le type de graphique
-          console.log('📊 Début du comptage par période...');
-          console.log('📊 Type de graphique:', chartType);
-          console.log('📊 Période sélectionnée:', selectedPeriod);
-          console.log('📊 Nombre de records à traiter:', filteredRecords.length);
+          devLogger.log('📊 Début du comptage par période...');
+          devLogger.log('📊 Type de graphique:', chartType);
+          devLogger.log('📊 Période sélectionnée:', selectedPeriod);
+          devLogger.log('📊 Nombre de records à traiter:', filteredRecords.length);
           
           const updatedData = periodInfo.data.map((periodItem, index) => {
             let count = 0;
@@ -469,13 +428,13 @@ export default function PMDashboardCharts({
             let feminin = 0;
             let autre = 0;
             
-            console.log(`📊 Traitement période ${index + 1}: ${periodItem.label} (${periodItem.date})`);
+            devLogger.log(`📊 Traitement période ${index + 1}: ${periodItem.label} (${periodItem.date})`);
             
             filteredRecords.forEach((record: any, recordIndex: number) => {
               const recordDate = new Date(record.createdAt);
               const periodDate = new Date(periodItem.date);
               
-              console.log(`📊 Record ${recordIndex + 1}: ${recordDate.toISOString()} vs ${periodDate.toISOString()}`);
+              devLogger.log(`📊 Record ${recordIndex + 1}: ${recordDate.toISOString()} vs ${periodDate.toISOString()}`);
               
               // Logique de comptage selon la période
               let matches = false;
@@ -536,11 +495,11 @@ export default function PMDashboardCharts({
                     autre++;
                   }
                 }
-                console.log(`✅ Record ${recordIndex + 1} match pour ${periodItem.label}`);
+                devLogger.log(`✅ Record ${recordIndex + 1} match pour ${periodItem.label}`);
               }
             });
             
-            console.log(`📊 Période ${periodItem.label}: ${chartType === 'campaign-objectives' ? count : `M:${masculin}, F:${feminin}, A:${autre}`}`);
+            devLogger.log(`📊 Période ${periodItem.label}: ${chartType === 'campaign-objectives' ? count : `M:${masculin}, F:${feminin}, A:${autre}`}`);
             
             if (chartType === 'campaign-objectives') {
               return { ...periodItem, count };
@@ -553,12 +512,12 @@ export default function PMDashboardCharts({
             ? updatedData.reduce((sum, item) => sum + item.count, 0)
             : updatedData.reduce((sum, item) => sum + item.masculin + item.feminin + item.autre, 0);
 
-          console.log('📊 Données finales du graphique:');
-          console.log('📊 Type:', chartType);
-          console.log('📊 Total:', total);
-          console.log('📊 Titre:', periodInfo.title);
-          console.log('📊 Label axe X:', periodInfo.xAxisLabel);
-          console.log('📊 Données par période:', updatedData);
+          devLogger.log('📊 Données finales du graphique:');
+          devLogger.log('📊 Type:', chartType);
+          devLogger.log('📊 Total:', total);
+          devLogger.log('📊 Titre:', periodInfo.title);
+          devLogger.log('📊 Label axe X:', periodInfo.xAxisLabel);
+          devLogger.log('📊 Données par période:', updatedData);
 
           setChartData({
             campaignsByPeriod: updatedData,
@@ -567,10 +526,6 @@ export default function PMDashboardCharts({
             total,
             chartType
           });
-
-        } else {
-          console.error('❌ Erreur lors de la récupération des données:', recordsResponse.status);
-        }
       } catch (error) {
         console.error('❌ Erreur lors du chargement des données:', error);
       } finally {

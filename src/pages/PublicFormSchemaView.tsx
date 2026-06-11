@@ -38,6 +38,7 @@ export default function PublicFormSchemaView({
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [submitterName, setSubmitterName] = useState('');
   const [submitterContact, setSubmitterContact] = useState('');
+  const [honeypot, setHoneypot] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +98,7 @@ export default function PublicFormSchemaView({
           formData: normalizedData,
           submitterName: submitterName || undefined,
           submitterContact: submitterContact || undefined,
+          _hp: honeypot || undefined,
         },
         { skipAuth: true },
       );
@@ -134,7 +136,19 @@ export default function PublicFormSchemaView({
   }
 
   return (
-    <div className={embedMode ? '' : 'max-w-2xl mx-auto'}>
+    <div className={embedMode ? '' : 'max-w-2xl mx-auto px-3 sm:px-0'} role="main">
+      <div className="absolute -left-[9999px] w-px h-px overflow-hidden" aria-hidden="true">
+        <label htmlFor="schema_hp">Ne pas remplir</label>
+        <input
+          type="text"
+          id="schema_hp"
+          name="_hp"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+        />
+      </div>
       {!embedMode && (
         <div className="mb-6 grid sm:grid-cols-2 gap-4">
           <div>
@@ -169,8 +183,12 @@ export default function PublicFormSchemaView({
       />
 
       {error && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex gap-2"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
           {error}
         </div>
       )}

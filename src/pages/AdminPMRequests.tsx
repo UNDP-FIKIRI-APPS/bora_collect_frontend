@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
+import { devLogger } from '../utils/logger';
+
 
 interface PendingProjectManager {
   id: string;
@@ -47,24 +49,15 @@ const AdminPMRequests: React.FC<AdminPMRequestsProps> = ({ onBack }) => {
   const [comments, setComments] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const apiBaseUrl = environment.apiBaseUrl;
-
   useEffect(() => {
     // Charger les données directement - le backend gérera l'autorisation
     const loadData = async () => {
       try {
         // Vérifier que le token existe
-        const currentToken = localStorage.getItem('token');
-        if (!currentToken) {
-          toast.error('Session expirée. Veuillez vous reconnecter.');
-          setLoading(false);
-          return;
-        }
-        
-        console.log('🔄 Loading data for AdminPMRequests...');
+        devLogger.log('🔄 Loading data for AdminPMRequests...');
         await fetchPendingApprovals();
         await fetchApprovalStats();
-        console.log('✅ Data loading completed');
+        devLogger.log('✅ Data loading completed');
       } catch (error) {
         console.error('❌ Error in loadData:', error);
         toast.error('Erreur lors du chargement des données');
@@ -76,54 +69,14 @@ const AdminPMRequests: React.FC<AdminPMRequestsProps> = ({ onBack }) => {
 
   const fetchPendingApprovals = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
-        setLoading(false);
-        return;
-      }
-
-      // Utiliser l'endpoint spécifique pour les demandes d'approbation
-      console.log('🔍 Fetching pending approvals from:', `${apiBaseUrl}/users/pending-approvals`);
-      console.log('🔑 Token available:', !!token);
-      
-      const response = await fetch(`${apiBaseUrl}/users/pending-approvals`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        signal: AbortSignal.timeout(environment.apiTimeout) // Timeout configuré
+      const pendingPMs = await enhancedApiService.get<any[]>('/users/pending-approvals', {
+        skipCache: true,
       });
-      
-      console.log('📡 Response status:', response.status);
-      console.log('📡 Response ok:', response.ok);
-
-      if (response.ok) {
-        const pendingPMs = await response.json();
-        console.log('✅ Pending approvals loaded:', pendingPMs.length);
-        setPendingPMs(pendingPMs);
-      } else if (response.status === 401) {
-        console.error('🔒 Unauthorized - token may be expired');
-        toast.error('Session expirée. Veuillez vous reconnecter.');
-      } else if (response.status === 403) {
-        console.error('🚫 Forbidden - user may not be admin');
-        toast.error('Accès refusé. Vous devez être administrateur.');
-      } else if (response.status === 404) {
-        console.error('❌ Not found - endpoint may not exist');
-        toast.error('Service non disponible. Vérifiez que le backend est démarré.');
-      } else {
-        console.error('💥 Server error:', response.status, response.statusText);
-        toast.error(`Erreur ${response.status}: ${response.statusText}`);
-      }
-    } catch (error) {
+      devLogger.log('✅ Pending approvals loaded:', pendingPMs.length);
+      setPendingPMs(pendingPMs);
+    } catch (error: any) {
       console.error('❌ Network error:', error);
-      if ((error as any).name === 'TimeoutError') {
-        toast.error('Timeout: Le serveur met trop de temps à répondre');
-      } else if ((error as any).name === 'AbortError') {
-        toast.error('Requête annulée');
-      } else {
-        toast.error('Erreur de connexion au serveur');
-      }
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     } finally {
       setLoading(false);
     }
@@ -131,29 +84,9 @@ const AdminPMRequests: React.FC<AdminPMRequestsProps> = ({ onBack }) => {
 
   const fetchApprovalStats = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        return;
-      }
-
-      // Utiliser l'endpoint spécifique pour les statistiques d'approbation
-      console.log('🔍 Fetching approval stats from:', `${apiBaseUrl}/users/approval-stats`);
-      
-      const response = await fetch(`${apiBaseUrl}/users/approval-stats`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        signal: AbortSignal.timeout(environment.apiTimeout)
-      });
-
-      if (response.ok) {
-        const statsData = await response.json();
-        console.log('✅ Approval stats loaded:', statsData);
-        setStats(statsData);
-      } else {
-        console.error('❌ Failed to load approval stats:', response.status, response.statusText);
-      }
+      const statsData = await enhancedApiService.get<any>('/users/approval-stats', { skipCache: true });
+      devLogger.log('✅ Approval stats loaded:', statsData);
+      setStats(statsData);
     } catch (error) {
       console.error('❌ Error loading approval stats:', error);
     }
@@ -162,37 +95,20 @@ const AdminPMRequests: React.FC<AdminPMRequestsProps> = ({ onBack }) => {
   const handleApproval = async (pmId: string, action: 'approve' | 'reject') => {
     setApproving(pmId);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${apiBaseUrl}/users/${pmId}/approve`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: action === 'approve' ? 'APPROVE' : 'REJECT',
-          comments: comments.trim() || undefined,
-        }),
+      await enhancedApiService.post(`/users/${pmId}/approve`, {
+        action: action === 'approve' ? 'APPROVE' : 'REJECT',
+        comments: comments.trim() || undefined,
       });
 
-      if (response.ok) {
-        const actionText = action === 'approve' ? 'approuvé' : 'rejeté';
-        toast.success(`Project Manager ${actionText} avec succès !`);
-        
-        // Mettre à jour les listes
-        await fetchPendingApprovals();
-        await fetchApprovalStats();
-        
-        // Fermer le modal
-        setShowModal(false);
-        setSelectedPM(null);
-        setComments('');
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || `Erreur lors de l'${action === 'approve' ? 'approbation' : 'rejet'}`);
-      }
-    } catch (error) {
-      toast.error('Erreur de connexion au serveur');
+      const actionText = action === 'approve' ? 'approuvé' : 'rejeté';
+      toast.success(`Project Manager ${actionText} avec succès !`);
+      await fetchPendingApprovals();
+      await fetchApprovalStats();
+      setShowModal(false);
+      setSelectedPM(null);
+      setComments('');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     } finally {
       setApproving(null);
     }

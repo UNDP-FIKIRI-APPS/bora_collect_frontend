@@ -1,4 +1,6 @@
 import React from 'react';
+import { devLogger } from '../utils/logger';
+
 
 interface AdminPendingApprovalsProps {
   onNavigateToRequests?: () => void;
@@ -13,7 +15,7 @@ const AdminPendingApprovals: React.FC<AdminPendingApprovalsProps> = ({
     if (onNavigateToRequests) {
       onNavigateToRequests();
     } else {
-      console.log('Navigation vers les demandes - fonction non définie');
+      devLogger.log('Navigation vers les demandes - fonction non définie');
     }
   };
 
@@ -21,7 +23,7 @@ const AdminPendingApprovals: React.FC<AdminPendingApprovalsProps> = ({
     if (onNavigateToCreatePM) {
       onNavigateToCreatePM();
     } else {
-      console.log('Navigation vers créer PM - fonction non définie');
+      devLogger.log('Navigation vers créer PM - fonction non définie');
     }
   };
 

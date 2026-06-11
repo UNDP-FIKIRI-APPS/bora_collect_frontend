@@ -3,6 +3,8 @@ import { toast } from 'react-toastify';
 import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
 import Pagination from '../components/Pagination';
+import { devLogger } from '../utils/logger';
+
 
 interface EnumeratorRequest {
   id: string;
@@ -43,10 +45,9 @@ const PMEnumeratorRequests: React.FC = () => {
 
   useEffect(() => {
     // Vérifier que l'utilisateur est connecté et est Project Manager
-    const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     
-    if (!token || !user) {
+    if (!user) {
       toast.error('Vous devez être connecté pour accéder à cette page');
       return;
     }
@@ -54,27 +55,21 @@ const PMEnumeratorRequests: React.FC = () => {
     try {
       const userData = JSON.parse(user);
       if (userData.role !== 'PROJECT_MANAGER') {
-        console.log('🚫 User role is not PROJECT_MANAGER:', userData.role);
+        devLogger.log('🚫 User role is not PROJECT_MANAGER:', userData.role);
         return;
       }
     } catch (error) {
-      console.log('❌ Error parsing user data:', error);
+      devLogger.log('❌ Error parsing user data:', error);
       return;
     }
 
     // Charger les données
     const loadData = async () => {
       try {
-        const currentToken = localStorage.getItem('token');
-        if (!currentToken) {
-          toast.error('Session expirée. Veuillez vous reconnecter.');
-          return;
-        }
-        
-        console.log('🔄 Loading data for PMEnumeratorRequests...');
+        devLogger.log('🔄 Loading data for PMEnumeratorRequests...');
         await fetchEnumeratorRequests();
         await fetchPMStats();
-        console.log('✅ Data loading completed');
+        devLogger.log('✅ Data loading completed');
       } catch (error) {
         console.error('❌ Error in loadData:', error);
         toast.error('Erreur lors du chargement des données');
@@ -85,24 +80,17 @@ const PMEnumeratorRequests: React.FC = () => {
 
   const fetchEnumeratorRequests = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
-        setLoading(false);
-        return;
-      }
-
-      console.log('🔍 Fetching enumerator requests from:', `${apiBaseUrl}/users/pm-enumerator-requests`);
+      devLogger.log('🔍 Fetching enumerator requests from:', `${apiBaseUrl}/users/pm-enumerator-requests`);
       
       // Utilisation du nouveau service API
       const requests = await enhancedApiService.get<any[]>('/users/pm-enumerator-requests', {
         skipCache: true, // Forcer le refresh
       });
       
-      console.log('✅ Enumerator requests loaded:', requests.length);
+      devLogger.log('✅ Enumerator requests loaded:', requests.length);
       setEnumeratorRequests(requests);
     } catch (error) {
-      console.log('❌ Network error:', error);
+      devLogger.log('❌ Network error:', error);
       // Ne pas afficher de toast pour éviter les notifications répétées
     } finally {
       setLoading(false);
@@ -111,22 +99,17 @@ const PMEnumeratorRequests: React.FC = () => {
 
   const fetchPMStats = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        return;
-      }
-
-      console.log('🔍 Fetching PM stats from:', `${apiBaseUrl}/users/pm-approval-stats`);
+      devLogger.log('🔍 Fetching PM stats from:', `${apiBaseUrl}/users/pm-approval-stats`);
       
       // Utilisation du nouveau service API
       const statsData = await enhancedApiService.get<PMStats>('/users/pm-approval-stats', {
         skipCache: true, // Forcer le refresh
       });
       
-      console.log('✅ PM stats loaded:', statsData);
+      devLogger.log('✅ PM stats loaded:', statsData);
       setStats(statsData);
     } catch (error) {
-      console.log('❌ Error loading PM stats:', error);
+      devLogger.log('❌ Error loading PM stats:', error);
       // Ne pas afficher de toast pour éviter les notifications répétées
     }
   };
@@ -135,12 +118,6 @@ const PMEnumeratorRequests: React.FC = () => {
     setApproving(requestId);
 
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Session expirée. Veuillez vous reconnecter.');
-        return;
-      }
-
       // Utilisation du nouveau service API
       await enhancedApiService.post(`/users/${requestId}/${action}`, {
         comments: comments

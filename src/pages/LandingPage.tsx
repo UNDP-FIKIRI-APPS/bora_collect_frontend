@@ -128,14 +128,23 @@ const LandingPage = () => {
             </div>
             
             {/* Menu Desktop */}
-            <div className="hidden md:flex items-center gap-4 lg:gap-6 text-sm uppercase tracking-wide text-white">
-              <a href="#presentation" className="hover:text-blue-200 transition-colors">
+            <div className="hidden md:flex items-center gap-3 lg:gap-4 text-sm font-semibold uppercase tracking-wide">
+              <a
+                href="#presentation"
+                className="rounded-full border border-white/60 bg-white/15 px-4 py-2 !text-white shadow-sm backdrop-blur-sm transition hover:border-white hover:bg-white/25"
+              >
                 Présentation
               </a>
-              <a href="#fonctionnement" className="hover:text-blue-200 transition-colors">
+              <a
+                href="#fonctionnement"
+                className="rounded-full border border-white/60 bg-white/15 px-4 py-2 !text-white shadow-sm backdrop-blur-sm transition hover:border-white hover:bg-white/25"
+              >
                 Fonctionnement
               </a>
-              <a href="#profils" className="hover:text-blue-200 transition-colors">
+              <a
+                href="#profils"
+                className="rounded-full border border-white/60 bg-white/15 px-4 py-2 !text-white shadow-sm backdrop-blur-sm transition hover:border-white hover:bg-white/25"
+              >
                 Profils
               </a>
               <Link
@@ -163,21 +172,21 @@ const LandingPage = () => {
                 <a
                   href="#presentation"
                   onClick={() => setIsMenuOpen(false)}
-                  className="text-white text-sm uppercase tracking-wide hover:text-blue-200 transition-colors py-2"
+                  className="rounded-lg border border-white/40 bg-white/10 px-4 py-3 text-sm font-semibold uppercase tracking-wide !text-white transition hover:bg-white/20"
                 >
                   Présentation
                 </a>
                 <a
                   href="#fonctionnement"
                   onClick={() => setIsMenuOpen(false)}
-                  className="text-white text-sm uppercase tracking-wide hover:text-blue-200 transition-colors py-2"
+                  className="rounded-lg border border-white/40 bg-white/10 px-4 py-3 text-sm font-semibold uppercase tracking-wide !text-white transition hover:bg-white/20"
                 >
                   Fonctionnement
                 </a>
                 <a
                   href="#profils"
                   onClick={() => setIsMenuOpen(false)}
-                  className="text-white text-sm uppercase tracking-wide hover:text-blue-200 transition-colors py-2"
+                  className="rounded-lg border border-white/40 bg-white/10 px-4 py-3 text-sm font-semibold uppercase tracking-wide !text-white transition hover:bg-white/20"
                 >
                   Profils
                 </a>

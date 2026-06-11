@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { environment } from '../../config/environment';
+import enhancedApiService from '../../services/enhancedApiService';
+import { isAuthenticated } from '../../utils/authStorage';
+import { devLogger } from '../../utils/logger';
+
 
 // Types et interfaces
 interface Survey {
@@ -134,70 +137,33 @@ const PMSurveyManagement: React.FC = () => {
     }
   }, []);
 
-  // Fonction pour obtenir le token d'authentification
-  const getAuthToken = useCallback((): string | null => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error('Vous devez être connecté pour accéder à cette page');
-      return null;
-    }
-    return token;
+  const ensureAuthenticated = useCallback((): boolean => {
+    if (isAuthenticated()) return true;
+    toast.error('Vous devez être connecté pour effectuer cette action');
+    return false;
   }, []);
 
   // Fonction pour charger les enquêtes du Projet Manager
   const fetchSurveys = useCallback(async () => {
     try {
       setLoading(true);
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${environment.apiBaseUrl}/surveys/pm-surveys`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.status === 401) {
-        console.log('⚠️ Token expiré ou invalide, déconnexion');
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        toast.error('Session expirée. Veuillez vous reconnecter.');
-        window.location.href = '/login';
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await enhancedApiService.get<Survey[]>('/surveys/pm-surveys', { skipCache: true });
       setSurveys(data);
     } catch (error) {
       handleApiError(error, 'du chargement des enquêtes');
     } finally {
       setLoading(false);
     }
-  }, [getAuthToken, handleApiError]);
+  }, [ensureAuthenticated, handleApiError]);
 
   const fetchReusableForms = useCallback(async () => {
     try {
       setLoadingReusableForms(true);
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${environment.apiBaseUrl}/forms`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await enhancedApiService.get<any[]>('/forms', { skipCache: true });
       setReusableForms(Array.isArray(data) ? data : []);
     } catch (error) {
       handleApiError(error, 'du chargement des formulaires existants');
@@ -205,7 +171,7 @@ const PMSurveyManagement: React.FC = () => {
     } finally {
       setLoadingReusableForms(false);
     }
-  }, [getAuthToken, handleApiError]);
+  }, [ensureAuthenticated, handleApiError]);
 
   // Fonction pour soumettre le formulaire
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
@@ -249,8 +215,7 @@ const PMSurveyManagement: React.FC = () => {
         return;
       }
 
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
       // Calculer la durée en jours
       const start = new Date(formData.startDate);
@@ -294,29 +259,9 @@ const PMSurveyManagement: React.FC = () => {
         };
       }
 
-      // URL et méthode
-      const url = editingSurvey 
-        ? `${environment.apiBaseUrl}/surveys/${editingSurvey.id}`
-        : `${environment.apiBaseUrl}/surveys/pm-create`;
-      
-      const method = editingSurvey ? 'PUT' : 'POST';
-
-      // Envoi de la requête
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(cleanData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      const result = editingSurvey
+        ? await enhancedApiService.put<any>(`/surveys/${editingSurvey.id}`, cleanData)
+        : await enhancedApiService.post<any>('/surveys/pm-create', cleanData);
 
       const action = editingSurvey ? 'modifiée' : 'créée';
       if (!editingSurvey && result.form) {
@@ -345,7 +290,7 @@ const PMSurveyManagement: React.FC = () => {
     sourceFormTemplateId,
     newFormName,
     newFormDescription,
-    getAuthToken,
+    ensureAuthenticated,
     handleApiError,
     fetchSurveys,
   ]);
@@ -405,77 +350,41 @@ const PMSurveyManagement: React.FC = () => {
   // Fonction pour publier une enquête
   const publishSurvey = useCallback(async (surveyId: string) => {
     try {
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${environment.apiBaseUrl}/surveys/${surveyId}/publish`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      await enhancedApiService.post(`/surveys/${surveyId}/publish`);
       toast.success('Enquête publiée avec succès !');
       await fetchSurveys();
     } catch (error) {
       handleApiError(error, 'de la publication de l\'enquête');
     }
-  }, [getAuthToken, handleApiError, fetchSurveys]);
+  }, [ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonction pour fermer une enquête
   const closeSurvey = useCallback(async (surveyId: string) => {
     try {
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${environment.apiBaseUrl}/surveys/${surveyId}/close`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      await enhancedApiService.post(`/surveys/${surveyId}/close`);
       toast.success('Enquête fermée avec succès !');
       await fetchSurveys();
     } catch (error) {
       handleApiError(error, 'de la fermeture de l\'enquête');
     }
-  }, [getAuthToken, handleApiError, fetchSurveys]);
+  }, [ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonction pour terminer une enquête
   const terminateSurvey = useCallback(async (surveyId: string) => {
     try {
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${environment.apiBaseUrl}/surveys/${surveyId}/terminate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      await enhancedApiService.post(`/surveys/${surveyId}/terminate`);
       toast.success('Enquête terminée avec succès !');
       await fetchSurveys();
     } catch (error) {
       handleApiError(error, 'de la terminaison de l\'enquête');
     }
-  }, [getAuthToken, handleApiError, fetchSurveys]);
+  }, [ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonctions utilitaires pour l'affichage
   const getStatusLabel = useCallback((status: string) => {
@@ -565,15 +474,15 @@ const PMSurveyManagement: React.FC = () => {
   // Obtenir les années disponibles (jusqu'à 2025)
   const getAvailableYears = () => {
     // Debug: vérifier les données des enquêtes
-    console.log('Surveys data:', surveys);
-    console.log('Survey start dates:', surveys.map(s => s.startDate));
+    devLogger.log('Surveys data:', surveys);
+    devLogger.log('Survey start dates:', surveys.map(s => s.startDate));
     
     // Obtenir les années des enquêtes existantes
     const surveyYears = surveys
       .map(survey => new Date(survey.startDate).getFullYear())
       .filter(year => !isNaN(year) && year <= 2025);
     
-    console.log('Survey years:', surveyYears);
+    devLogger.log('Survey years:', surveyYears);
     
     const uniqueSurveyYears = [...new Set(surveyYears)].sort((a, b) => b - a);
     
@@ -584,11 +493,11 @@ const PMSurveyManagement: React.FC = () => {
       for (let year = currentYear; year >= 2020 && year <= 2025; year--) {
         defaultYears.push(year);
       }
-      console.log('Using default years:', defaultYears);
+      devLogger.log('Using default years:', defaultYears);
       return defaultYears;
     }
     
-    console.log('Final years:', uniqueSurveyYears);
+    devLogger.log('Final years:', uniqueSurveyYears);
     return uniqueSurveyYears;
   };
 

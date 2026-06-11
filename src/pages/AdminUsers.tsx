@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import ConfirmModal from '../components/ConfirmModal';
 import UserCreationForm from '../components/UserCreationForm';
+import enhancedApiService from '../services/enhancedApiService';
 import { environment } from '../config/environment';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -36,7 +37,7 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
-  const [campaigns, setCampaigns] = useState([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [addError, setAddError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -58,11 +59,7 @@ export default function AdminUsers() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${environment.apiBaseUrl}/users`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (!res.ok) throw new Error('Erreur lors du chargement');
-      const allUsers = await res.json();
+      const allUsers = await enhancedApiService.get<any[]>('/users', { skipCache: true });
       // Filtrer seulement les Project Managers (ANALYST)
       const pmUsers = allUsers.filter((user: any) => user.role === 'ANALYST');
       setUsers(pmUsers);
@@ -77,13 +74,8 @@ export default function AdminUsers() {
   const fetchCampaigns = async () => {
     setLoadingCampaigns(true);
     try {
-      const response = await fetch(`${environment.apiBaseUrl}/users/campaigns`);
-      if (response.ok) {
-        const campaignsData = await response.json();
-        setCampaigns(campaignsData);
-      } else {
-        console.error('Erreur lors du chargement des campagnes');
-      }
+      const campaignsData = await enhancedApiService.get<any[]>('/users/campaigns', { skipCache: true });
+      setCampaigns(campaignsData);
     } catch (error) {
       console.error('Erreur lors du chargement des campagnes:', error);
     } finally {
@@ -107,15 +99,7 @@ export default function AdminUsers() {
         role: 'ANALYST'
       };
       
-      const res = await fetch(`${environment.apiBaseUrl}/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify(pmData),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || 'Erreur lors de la création');
-      }
+      await enhancedApiService.post('/users', pmData);
       setShowAdd(false);
       fetchUsers();
     } catch (err: any) {
@@ -135,11 +119,7 @@ export default function AdminUsers() {
     if (!confirmDeleteId) return;
     setLoading(true);
     try {
-              const res = await fetch(`${environment.apiBaseUrl}/users/${confirmDeleteId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (!res.ok) throw new Error('Erreur lors de la suppression');
+      await enhancedApiService.delete(`/users/${confirmDeleteId}`);
       fetchUsers();
     } catch (err: any) {
       setError(err.message || 'Erreur inconnue');
@@ -154,12 +134,7 @@ export default function AdminUsers() {
     if (!editRoleId) return;
     setRoleSaving(true);
     try {
-              const res = await fetch(`${environment.apiBaseUrl}/users/${editRoleId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ role: editRole }),
-      });
-      if (!res.ok) throw new Error('Erreur lors de la modification du rôle');
+      await enhancedApiService.patch(`/users/${editRoleId}`, { role: editRole });
       setEditRoleId(null);
       fetchUsers();
     } catch (err: any) {
@@ -179,15 +154,7 @@ export default function AdminUsers() {
     setResetSaving(true);
     setResetError('');
     try {
-      const res = await fetch(`${environment.apiBaseUrl}/users/${showReset}/reset-password`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ password: resetPwd }),
-      });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || 'Erreur lors de la réinitialisation');
-      }
+      await enhancedApiService.put(`/users/${showReset}/reset-password`, { password: resetPwd });
       setShowReset(null);
       setResetPwd('');
       setResetError('');
@@ -232,12 +199,7 @@ export default function AdminUsers() {
   const handleReactivate = async (id: string) => {
     setLoading(true);
     try {
-              const res = await fetch(`${environment.apiBaseUrl}/users/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ status: 'ACTIVE' }),
-      });
-      if (!res.ok) throw new Error('Erreur lors de la réactivation');
+      await enhancedApiService.patch(`/users/${id}`, { status: 'ACTIVE' });
       fetchUsers();
     } catch (err: any) {
       setError(err.message || 'Erreur inconnue');

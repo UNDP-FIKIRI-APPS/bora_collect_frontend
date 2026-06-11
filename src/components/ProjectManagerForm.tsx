@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 import { ODD_DATA } from '../data/oddData';
 
 // Provinces de la RDC
@@ -137,67 +137,47 @@ const ProjectManagerForm: React.FC<ProjectManagerFormProps> = ({
 
     try {
       const endpoint = isAdmin ? '/users' : '/users/register-pm';
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: 'PROJECT_MANAGER',
+        contact: formData.contact || undefined,
+        whatsapp: formData.whatsapp || undefined,
+        organization: formData.organization,
+        campaignDescription: formData.campaignDescription,
+        targetProvinces: formData.targetProvinces,
+        selectedODD: formData.selectedODD,
       };
-      const token = localStorage.getItem('token');
-      if (isAdmin && token) {
-        headers.Authorization = `Bearer ${token}`;
+
+      await enhancedApiService.post(endpoint, payload, { skipAuth: !isAdmin, skipToast: !isAdmin });
+      if (isAdmin) {
+        alert('Project Manager créé avec succès !');
+      } else {
+        navigate('/account-created', {
+          state: { email: formData.email },
+        });
+        return;
       }
 
-      const response = await fetch(`${environment.apiBaseUrl}${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: 'PROJECT_MANAGER',
-          contact: formData.contact || undefined,
-          whatsapp: formData.whatsapp || undefined,
-          organization: formData.organization,
-          campaignDescription: formData.campaignDescription,
-          targetProvinces: formData.targetProvinces,
-          selectedODD: formData.selectedODD,
-        }),
+      setFormData({
+        name: '',
+        email: '',
+        password: '',
+        confirmPassword: '',
+        contact: '',
+        whatsapp: '',
+        organization: '',
+        campaignDescription: '',
+        targetProvinces: [],
+        selectedODD: null,
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        if (isAdmin) {
-          alert('Project Manager créé avec succès !');
-        } else {
-          // Rediriger vers la page de succès avec l'email
-          navigate('/account-created', { 
-            state: { email: formData.email } 
-          });
-          return; // Sortir de la fonction pour éviter la réinitialisation
-        }
-        
-        // Réinitialiser le formulaire
-        setFormData({
-          name: '',
-          email: '',
-          password: '',
-          confirmPassword: '',
-          contact: '',
-          whatsapp: '',
-          organization: '',
-          campaignDescription: '',
-          targetProvinces: [],
-          selectedODD: null
-        });
-
-        // Appeler le callback de succès
-        if (onSuccess) {
-          onSuccess();
-        }
-      } else {
-        setError(data.message || 'Erreur lors de l\'inscription');
+      if (onSuccess) {
+        onSuccess();
       }
-    } catch (error) {
-      setError('Erreur de connexion. Veuillez réessayer.');
+    } catch (error: any) {
+      setError(error?.message || 'Erreur de connexion. Veuillez réessayer.');
     } finally {
       setIsLoading(false);
     }

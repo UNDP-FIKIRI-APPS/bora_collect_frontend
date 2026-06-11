@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 import NotificationBadge from './NotificationBadge';
+import { devLogger } from '../utils/logger';
+
 
 interface Notification {
   id: string;
@@ -27,28 +29,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.warn('⚠️ NotificationPanel - Aucun token trouvé');
-        return;
-      }
-
-      const response = await fetch(`${environment.apiBaseUrl}/notifications`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`✅ NotificationPanel - ${data.length} notifications chargées pour ${userRole}`);
-        setNotifications(data || []);
-      } else {
-        console.error(`❌ NotificationPanel - Erreur HTTP ${response.status}:`, response.statusText);
-        const errorData = await response.json().catch(() => ({}));
-        console.error('❌ Détails de l\'erreur:', errorData);
-      }
+      const data = await enhancedApiService.get<Notification[]>('/notifications', { skipCache: true });
+      devLogger.log(`✅ NotificationPanel - ${data.length} notifications chargées pour ${userRole}`);
+      setNotifications(data || []);
     } catch (error) {
       console.error('❌ NotificationPanel - Erreur lors de la récupération des notifications:', error);
     } finally {
@@ -58,27 +41,12 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
 
   const fetchUnreadCount = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.warn('⚠️ NotificationPanel - Aucun token trouvé pour le compteur');
-        return;
-      }
-
-      const response = await fetch(`${environment.apiBaseUrl}/notifications/unread-count`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      const data = await enhancedApiService.get<{ count: number }>('/notifications/unread-count', {
+        skipCache: true,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        const count = data.count || 0;
-        console.log(`✅ NotificationPanel - ${count} notifications non lues pour ${userRole}`);
-        setUnreadCount(count);
-      } else {
-        console.error(`❌ NotificationPanel - Erreur HTTP ${response.status} pour le compteur:`, response.statusText);
-      }
+      const count = data.count || 0;
+      devLogger.log(`✅ NotificationPanel - ${count} notifications non lues pour ${userRole}`);
+      setUnreadCount(count);
     } catch (error) {
       console.error('❌ NotificationPanel - Erreur lors de la récupération du compteur:', error);
     }
@@ -86,20 +54,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      await fetch(`${environment.apiBaseUrl}/notifications/${notificationId}/read`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      // Mettre à jour localement
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+      await enhancedApiService.post(`/notifications/${notificationId}/read`);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n)),
       );
       fetchUnreadCount();
     } catch (error) {
@@ -109,23 +66,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
 
   const markAllAsRead = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const response = await fetch(`${environment.apiBaseUrl}/notifications/mark-all-read`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        // Mettre à jour localement
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        // Rafraîchir le compteur depuis le serveur
-        await fetchUnreadCount();
-      }
+      await enhancedApiService.post('/notifications/mark-all-read');
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      await fetchUnreadCount();
     } catch (error) {
       console.error('Erreur lors du marquage de toutes comme lues:', error);
     }
@@ -134,21 +77,18 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
   useEffect(() => {
     fetchNotifications();
     fetchUnreadCount();
-
-    // Refresh automatique supprimé - les notifications seront mises à jour uniquement via les événements
   }, []);
 
   useEffect(() => {
     if (isOpen) {
       fetchNotifications();
-      fetchUnreadCount(); // Rafraîchir le compteur quand on ouvre le panel
+      fetchUnreadCount();
     }
   }, [isOpen]);
 
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.isRead) {
       await markAsRead(notification.id);
-      // Le compteur sera mis à jour par markAsRead qui appelle fetchUnreadCount
     }
     setIsOpen(false);
     if (onNotificationClick && notification.link) {
@@ -156,7 +96,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
     }
   };
 
-  const unreadNotifications = notifications.filter(n => !n.isRead);
+  const unreadNotifications = notifications.filter((n) => !n.isRead);
 
   return (
     <div className="relative">
@@ -165,17 +105,19 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
         className="relative p-2 text-gray-600 hover:text-gray-900 transition-colors"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 00-2-2h-2a2 2 0 00-2 2v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 00-2-2h-2a2 2 0 00-2 2v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+          />
         </svg>
         <NotificationBadge count={unreadCount} />
       </button>
 
       {isOpen && (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl z-50 border border-gray-200">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
@@ -199,17 +141,21 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
                     key={notification.id}
                     onClick={() => handleNotificationClick(notification)}
                     className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
-                      !notification.isRead ? 'bg-blue-50' : ''
+                      notification.isRead ? '' : 'bg-blue-50'
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={`flex-shrink-0 w-2 h-2 rounded-full mt-2 ${
-                        !notification.isRead ? 'bg-blue-600' : 'bg-transparent'
-                      }`} />
+                      <div
+                        className={`flex-shrink-0 w-2 h-2 rounded-full mt-2 ${
+                          notification.isRead ? 'bg-transparent' : 'bg-blue-600'
+                        }`}
+                      />
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${
-                          !notification.isRead ? 'text-gray-900' : 'text-gray-600'
-                        }`}>
+                        <p
+                          className={`text-sm font-medium ${
+                            notification.isRead ? 'text-gray-600' : 'text-gray-900'
+                          }`}
+                        >
                           {notification.title}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">{notification.message}</p>
@@ -219,7 +165,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
                             month: '2-digit',
                             year: 'numeric',
                             hour: '2-digit',
-                            minute: '2-digit'
+                            minute: '2-digit',
                           })}
                         </p>
                       </div>
@@ -236,4 +182,3 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ userRole, onNotif
 };
 
 export default NotificationPanel;
-

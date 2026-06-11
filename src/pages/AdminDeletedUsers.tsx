@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 
 export default function AdminDeletedUsers() {
   const [users, setUsers] = useState<any[]>([]);
@@ -10,11 +10,7 @@ export default function AdminDeletedUsers() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${environment.apiBaseUrl}/users`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (!res.ok) throw new Error('Erreur lors du chargement');
-      const data = await res.json();
+      const data = await enhancedApiService.get<any[]>('/users', { skipCache: true });
       setUsers(data.filter((u: any) => u.status === 'DELETED'));
     } catch (err: any) {
       setError(err.message || 'Erreur inconnue');
@@ -23,17 +19,14 @@ export default function AdminDeletedUsers() {
     }
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
   const handleReactivate = async (id: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${environment.apiBaseUrl}/users/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ status: 'ACTIVE' }),
-      });
-      if (!res.ok) throw new Error('Erreur lors de la réactivation');
+      await enhancedApiService.patch(`/users/${id}`, { status: 'ACTIVE' });
       fetchUsers();
     } catch (err: any) {
       setError(err.message || 'Erreur inconnue');
@@ -44,38 +37,29 @@ export default function AdminDeletedUsers() {
 
   return (
     <div className="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-lg mt-8">
-      <h2 className="text-2xl font-bold text-center mb-6">Utilisateurs supprimés</h2>
-      {error && <div className="text-red-600 mb-4 text-center">{error}</div>}
-      {loading ? (
-        <div>Chargement...</div>
-      ) : users.length === 0 ? (
-        <div className="text-center text-gray-500">Aucun utilisateur supprimé.</div>
-      ) : (
-        <table className="w-full border mt-4">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-2">Nom</th>
-              <th className="p-2">Email</th>
-              <th className="p-2">Rôle</th>
-              <th className="p-2">Statut</th>
-              <th className="p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u: any) => (
-              <tr key={u.id}>
-                <td className="p-2">{u.name}</td>
-                <td className="p-2">{u.email}</td>
-                <td className="p-2">{u.role}</td>
-                <td className="p-2"><span className="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-800">Désactivé</span></td>
-                <td className="p-2">
-                  <button onClick={() => handleReactivate(u.id)} className="text-green-600 underline">Réactiver</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <h2 className="text-2xl font-bold mb-6">Utilisateurs supprimés</h2>
+      {error && <div className="text-red-600 mb-4">{error}</div>}
+      {loading && <div>Chargement...</div>}
+      <ul className="divide-y">
+        {users.map((user) => (
+          <li key={user.id} className="py-4 flex justify-between items-center">
+            <div>
+              <p className="font-semibold">{user.name}</p>
+              <p className="text-sm text-gray-600">{user.email}</p>
+            </div>
+            <button
+              onClick={() => handleReactivate(user.id)}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              disabled={loading}
+            >
+              Réactiver
+            </button>
+          </li>
+        ))}
+      </ul>
+      {!loading && users.length === 0 && (
+        <p className="text-gray-500">Aucun utilisateur supprimé.</p>
       )}
     </div>
   );
-} 
+}

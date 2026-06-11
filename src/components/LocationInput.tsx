@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { getCitiesByProvince, getCommunesByCity } from '../data/citiesData';
-import { getQuartiersByCommune } from '../data/quartiersData';
+import { useQuartiers } from '../hooks/useQuartiers';
 
 interface LocationInputProps {
   fieldId: string;
@@ -36,6 +36,11 @@ const LocationInput: React.FC<LocationInputProps> = ({
   const [customCity, setCustomCity] = useState('');
   const [customCommune, setCustomCommune] = useState('');
   const [customQuartier, setCustomQuartier] = useState('');
+  const quartiers = useQuartiers(
+    showCustomCommune ? '' : manualAddress.province,
+    showCustomCommune ? '' : manualAddress.city,
+    showCustomCommune ? '' : manualAddress.commune,
+  );
 
   const commonClasses = `w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${className}`;
 
@@ -306,7 +311,7 @@ const LocationInput: React.FC<LocationInputProps> = ({
                 className={commonClasses}
               >
                 <option value="">Sélectionnez votre quartier</option>
-                      {!showCustomCommune && getQuartiersByCommune(manualAddress.province, manualAddress.city, manualAddress.commune).map((quartier, index) => (
+                      {!showCustomCommune && quartiers.map((quartier, index) => (
                   <option key={index} value={quartier}>
                     {quartier}
                   </option>

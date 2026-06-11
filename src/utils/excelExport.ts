@@ -1,5 +1,7 @@
 import * as XLSX from 'xlsx';
 import { collectFormDataKeysFromRecords, flattenFormData } from './formDataFlatten';
+import { devLogger } from './logger';
+
 
 // Interface pour les données d'enquête
 export interface EnqueteData {
@@ -110,7 +112,7 @@ export const exportEnquetesToExcel = (enquetes: any[], filename: string = 'enque
     link.click();
     window.URL.revokeObjectURL(url);
 
-    console.log('✅ Export Excel des enquêtes réussi');
+    devLogger.log('✅ Export Excel des enquêtes réussi');
     return true;
   } catch (error) {
     console.error('❌ Erreur lors de l\'export Excel des enquêtes:', error);
@@ -186,7 +188,7 @@ export const exportStatsToExcel = (
     link.click();
     window.URL.revokeObjectURL(url);
 
-    console.log('✅ Export Excel des statistiques réussi');
+    devLogger.log('✅ Export Excel des statistiques réussi');
     return true;
   } catch (error) {
     console.error('❌ Erreur lors de l\'export Excel des statistiques:', error);
@@ -253,7 +255,7 @@ export const exportStatsSexeToExcel = (
     link.click();
     window.URL.revokeObjectURL(url);
 
-    console.log('✅ Export Excel des statistiques par sexe réussi');
+    devLogger.log('✅ Export Excel des statistiques par sexe réussi');
     return true;
   } catch (error) {
     console.error('❌ Erreur lors de l\'export Excel des statistiques par sexe:', error);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 
 interface Survey {
   id: string;
@@ -45,48 +45,20 @@ const ControllerAvailableSurveys: React.FC = () => {
     availability: ''
   });
 
-  const apiBaseUrl = environment.apiBaseUrl;
-
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
-        return;
-      }
-
-      // Charger les enquêtes publiées
-      const surveysResponse = await fetch(`${apiBaseUrl}/surveys/published`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (surveysResponse.ok) {
-        const surveysData = await surveysResponse.json();
-        setSurveys(surveysData);
-      }
-
-      // Charger mes candidatures
-      const applicationsResponse = await fetch(`${apiBaseUrl}/surveys/my-applications`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (applicationsResponse.ok) {
-        const applicationsData = await applicationsResponse.json();
-        setMyApplications(applicationsData);
-      }
-
-    } catch (error) {
-      toast.error('Erreur de connexion au serveur');
+      const [surveysData, applicationsData] = await Promise.all([
+        enhancedApiService.get<Survey[]>('/surveys/published', { skipCache: true }),
+        enhancedApiService.get<Application[]>('/surveys/my-applications', { skipCache: true }),
+      ]);
+      setSurveys(surveysData);
+      setMyApplications(applicationsData);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     } finally {
       setLoading(false);
     }
@@ -96,28 +68,14 @@ const ControllerAvailableSurveys: React.FC = () => {
     if (!selectedSurvey) return;
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${apiBaseUrl}/surveys/${selectedSurvey.id}/apply`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(applicationData),
-      });
-
-      if (response.ok) {
-        toast.success('Candidature envoyée avec succès !');
-        setShowApplicationModal(false);
-        setSelectedSurvey(null);
-        setApplicationData({ motivation: '', experience: '', availability: '' });
-        fetchData(); // Recharger les données
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || 'Erreur lors de l\'envoi de la candidature');
-      }
-    } catch (error) {
-      toast.error('Erreur de connexion au serveur');
+      await enhancedApiService.post(`/surveys/${selectedSurvey.id}/apply`, applicationData);
+      toast.success('Candidature envoyée avec succès !');
+      setShowApplicationModal(false);
+      setSelectedSurvey(null);
+      setApplicationData({ motivation: '', experience: '', availability: '' });
+      fetchData();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     }
   };
 

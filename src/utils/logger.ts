@@ -6,6 +6,9 @@
 
 const isDevelopment = import.meta.env.DEV;
 const isProduction = import.meta.env.PROD;
+const isDebugEnabled = import.meta.env.VITE_ENABLE_DEBUG === 'true';
+
+const shouldLog = () => isDevelopment && isDebugEnabled;
 
 /**
  * Masque les données sensibles dans les logs
@@ -44,22 +47,22 @@ function maskSensitiveData(data: any): any {
  */
 export const devLogger = {
   log: (...args: any[]) => {
-    if (isDevelopment) {
+    if (shouldLog()) {
       console.log(...args);
     }
   },
   warn: (...args: any[]) => {
-    if (isDevelopment) {
+    if (shouldLog()) {
       console.warn(...args);
     }
   },
   debug: (...args: any[]) => {
-    if (isDevelopment) {
+    if (shouldLog()) {
       console.debug(...args);
     }
   },
   info: (...args: any[]) => {
-    if (isDevelopment) {
+    if (shouldLog()) {
       console.info(...args);
     }
   },
@@ -91,22 +94,12 @@ export const errorLogger = {
  */
 export const securityLogger = {
   log: (event: string, details?: any) => {
-    const maskedDetails = details ? maskSensitiveData(details) : undefined;
-    
-    if (isProduction) {
-      console.log(`[SECURITY] ${event}`, maskedDetails || '');
-    } else {
-      console.log(`[SECURITY] ${event}`, details);
-    }
+    if (!shouldLog()) return;
+    console.log(`[SECURITY] ${event}`, details ? maskSensitiveData(details) : '');
   },
   warn: (event: string, details?: any) => {
-    const maskedDetails = details ? maskSensitiveData(details) : undefined;
-    
-    if (isProduction) {
-      console.warn(`[SECURITY] ${event}`, maskedDetails || '');
-    } else {
-      console.warn(`[SECURITY] ${event}`, details);
-    }
+    if (!shouldLog()) return;
+    console.warn(`[SECURITY] ${event}`, details ? maskSensitiveData(details) : '');
   },
 };
 
@@ -115,20 +108,12 @@ export const securityLogger = {
  */
 export const logger = {
   log: (...args: any[]) => {
-    if (isDevelopment) {
-      console.log(...args);
-    } else {
-      // En production, masquer les données sensibles
-      const maskedArgs = args.map(arg => maskSensitiveData(arg));
-      console.log(...maskedArgs);
-    }
+    if (!shouldLog()) return;
+    console.log(...args);
   },
   info: (message: string, data?: any) => {
-    if (isDevelopment) {
-      console.info(`[INFO] ${message}`, data || '');
-    } else {
-      console.info(`[INFO] ${message}`);
-    }
+    if (!shouldLog()) return;
+    console.info(`[INFO] ${message}`, data || '');
   },
   warn: (...args: any[]) => {
     const maskedArgs = isProduction ? args.map(arg => maskSensitiveData(arg)) : args;

@@ -3,6 +3,8 @@ import { toast } from 'react-toastify';
 import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
 import Pagination from '../components/Pagination';
+import { devLogger } from '../utils/logger';
+
 
 const RECORDS_PAGE_SIZE = 30;
 
@@ -142,17 +144,14 @@ export default function RecordsList() {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      console.log('🔍 Récupération du formulaire pour la campagne:', campaignId);
+      devLogger.log('🔍 Récupération du formulaire pour la campagne:', campaignId);
       
       // Utilisation du nouveau service API
       const formsData = await enhancedApiService.get<any>(`/forms/by-survey/${campaignId}`);
       
       // Extraire le tableau de formulaires (peut être directement un tableau ou dans { data: [...] })
       const forms = Array.isArray(formsData) ? formsData : (formsData?.data || []);
-      console.log('✅ Formulaires récupérés:', forms);
+      devLogger.log('✅ Formulaires récupérés:', forms);
       
       // Vérifier que forms est bien un tableau
       if (!Array.isArray(forms)) {
@@ -165,10 +164,10 @@ export default function RecordsList() {
       const activeForm = forms.find((form: any) => form.isActive);
       if (activeForm) {
         setSelectedCampaignForm(activeForm);
-        console.log('✅ Formulaire sélectionné:', activeForm);
+        devLogger.log('✅ Formulaire sélectionné:', activeForm);
       } else {
         setSelectedCampaignForm(null);
-        console.log('⚠️ Aucun formulaire actif trouvé');
+        devLogger.log('⚠️ Aucun formulaire actif trouvé');
       }
     } catch (error) {
       console.error('❌ Erreur lors de la récupération du formulaire:', error);
@@ -368,15 +367,9 @@ export default function RecordsList() {
   const fetchCampaigns = async () => {
     try {
       setCampaignsLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('Token d\'authentification manquant');
-        return;
-      }
-
       // Utilisation du nouveau service API
       const applicationsData = await enhancedApiService.get<any[]>('/users/enumerator-campaigns');
-      console.log('✅ Applications approuvées chargées:', applicationsData);
+      devLogger.log('✅ Applications approuvées chargées:', applicationsData);
       
       // Extraire les campagnes des applications
       const campaignsFromApplications = applicationsData.map((app: any) => ({
@@ -389,7 +382,7 @@ export default function RecordsList() {
       }));
       
       setCampaigns(campaignsFromApplications);
-      console.log('✅ Campagnes extraites:', campaignsFromApplications);
+      devLogger.log('✅ Campagnes extraites:', campaignsFromApplications);
     } catch (error) {
       console.error('❌ Erreur de connexion au serveur:', error);
       setError('Erreur de connexion au serveur');
@@ -404,12 +397,6 @@ export default function RecordsList() {
     
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('Token d\'authentification manquant');
-        return;
-      }
-
       // Charger les enregistrements du serveur
       const user = localStorage.getItem('user');
       let apiUrl = `${environment.apiBaseUrl}/records`;
@@ -426,7 +413,7 @@ export default function RecordsList() {
         apiUrl += `?campaignId=${campaignId}`;
       }
       
-      console.log('🔍 Chargement des enregistrements:', { apiUrl, campaignId, currentUserId });
+      devLogger.log('🔍 Chargement des enregistrements:', { apiUrl, campaignId, currentUserId });
       
       // Utilisation du nouveau service API
       const endpoint = apiUrl.replace(environment.apiBaseUrl, '');
@@ -438,7 +425,7 @@ export default function RecordsList() {
       // Extraire le tableau de records
       const serverRecords = Array.isArray(responseData) ? responseData : (responseData?.data || []);
       
-      console.log('✅ Enregistrements serveur chargés:', serverRecords.length, serverRecords);
+      devLogger.log('✅ Enregistrements serveur chargés:', serverRecords.length, serverRecords);
       
       let filteredRecords = Array.isArray(serverRecords) ? serverRecords : [];
 

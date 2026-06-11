@@ -3,6 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { APP_LOGO_URL } from '../config/branding';
 import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
+import { devLogger } from '../utils/logger';
+
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -20,8 +22,8 @@ const Login = () => {
     try {
       // Utiliser le chemin relatif - enhancedApiService ajoute déjà baseURL
       const loginEndpoint = '/auth/login';
-      console.log('🔗 Tentative de connexion à:', `${environment.apiBaseUrl}${loginEndpoint}`);
-      console.log('🔍 Configuration API:', {
+      devLogger.log('🔗 Tentative de connexion à:', `${environment.apiBaseUrl}${loginEndpoint}`);
+      devLogger.log('🔍 Configuration API:', {
         apiBaseUrl: environment.apiBaseUrl,
         envVar: import.meta.env.VITE_API_BASE_URL,
         default: 'http://localhost:3000'
@@ -46,9 +48,9 @@ const Login = () => {
         
         // Si un autre compte est connecté, le déconnecter AVANT de stocker les nouvelles données
         if (existingUserId && existingUserId !== newUserId && existingToken) {
-          console.log('⚠️ Détection d\'un autre compte connecté. Déconnexion de l\'ancien compte...');
-          console.log('   Ancien compte:', existingUserId);
-          console.log('   Nouveau compte:', newUserId);
+          devLogger.log('⚠️ Détection d\'un autre compte connecté. Déconnexion de l\'ancien compte...');
+          devLogger.log('   Ancien compte:', existingUserId);
+          devLogger.log('   Nouveau compte:', newUserId);
           
           // IMPORTANT: Déclencher forceLogout AVANT de changer les données
           // Cela permet de déconnecter l'ancien compte dans les autres onglets
@@ -70,9 +72,12 @@ const Login = () => {
         // Cela évite que le nouvel onglet se déconnecte lui-même
         // Stocker dans l'ordre : currentUserId d'abord, puis token, puis user
         localStorage.setItem('currentUserId', newUserId);
-        localStorage.setItem('token', data.access_token);
-        if (data.refresh_token) {
-          localStorage.setItem('refresh_token', data.refresh_token);
+        const useCookies = import.meta.env.VITE_USE_HTTPONLY_COOKIES !== 'false';
+        if (!useCookies) {
+          localStorage.setItem('token', data.access_token);
+          if (data.refresh_token) {
+            localStorage.setItem('refresh_token', data.refresh_token);
+          }
         }
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('sessionId', data.session_id || sessionId);
@@ -85,32 +90,32 @@ const Login = () => {
           }, 2000); // 2 secondes pour laisser le temps aux autres onglets de traiter
         }
         
-        console.log('✅ Connexion réussie, données stockées:');
-        console.log('🔍 Token:', !!data.access_token);
-        console.log('🔍 User data:', data.user);
-        console.log('🔍 User role:', data.user.role);
-        console.log('🔍 Session ID:', sessionId);
+        devLogger.log('✅ Connexion réussie, données stockées:');
+        devLogger.log('🔍 Token:', !!data.access_token);
+        devLogger.log('🔍 User data:', data.user);
+        devLogger.log('🔍 User role:', data.user.role);
+        devLogger.log('🔍 Session ID:', sessionId);
         
         // Rediriger selon le rôle
         switch (data.user.role) {
           case 'ADMIN':
-            console.log('🔄 Redirection vers /admin');
+            devLogger.log('🔄 Redirection vers /admin');
             navigate('/admin');
             break;
           case 'CONTROLLER':
-            console.log('🔄 Redirection vers /controleur');
+            devLogger.log('🔄 Redirection vers /controleur');
             navigate('/controleur');
             break;
           case 'ANALYST':
-            console.log('🔄 Redirection vers /analyst-home');
+            devLogger.log('🔄 Redirection vers /analyst-home');
             navigate('/analyst-home');
             break;
           case 'PROJECT_MANAGER':
-            console.log('🔄 Redirection vers /project-manager');
+            devLogger.log('🔄 Redirection vers /project-manager');
             navigate('/project-manager');
             break;
           default:
-            console.log('🔄 Redirection vers / (rôle inconnu)');
+            devLogger.log('🔄 Redirection vers / (rôle inconnu)');
             navigate('/');
         }
     } catch (err: any) {

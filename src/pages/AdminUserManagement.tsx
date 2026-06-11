@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { environment } from '../config/environment';
 import { useNotification } from '../hooks/useNotification';
 import NotificationContainer from '../components/NotificationContainer';
 import Pagination from '../components/Pagination';
 import enhancedApiService from '../services/enhancedApiService';
 import { useDebounce } from '../hooks/useDebounce';
+import { devLogger } from '../utils/logger';
+
 
 interface User {
   id: string;
@@ -31,7 +33,9 @@ interface User {
 
 const AdminUserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const hasLoadedOnce = useRef(false);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [flippedCards, setFlippedCards] = useState<{ [key: string]: boolean }>({});
@@ -47,7 +51,7 @@ const AdminUserManagement: React.FC = () => {
     role: ''
   });
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+  const debouncedSearchTerm = useDebounce(searchTerm, 800);
   // États pour la pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(50);
@@ -82,11 +86,12 @@ const AdminUserManagement: React.FC = () => {
   const paginatedUsers = users; // Les données sont déjà paginées côté serveur
 
   const fetchUsers = useCallback(async (page: number = currentPage) => {
-    setLoading(true);
+    if (!hasLoadedOnce.current) {
+      setInitialLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Construire les paramètres de requête avec filtres
       const params = new URLSearchParams({
         page: page.toString(),
@@ -132,21 +137,20 @@ const AdminUserManagement: React.FC = () => {
       }
 
       setUsers(usersArray);
-      console.log(`✅ ${usersArray.length} utilisateurs chargés (page ${page}/${pagination?.totalPages || 1})`);
+      devLogger.log(`✅ ${usersArray.length} utilisateurs chargés (page ${page}/${pagination?.totalPages || 1})`);
     } catch (error) {
       console.error('Erreur lors du chargement des utilisateurs:', error);
       setUsers([]);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setIsRefreshing(false);
+      hasLoadedOnce.current = true;
     }
   }, [pageSize, debouncedSearchTerm, filters]);
 
   const fetchCampaigns = useCallback(async () => {
     setLoadingCampaigns(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const responseData = await enhancedApiService.get<any>('/surveys/admin');
       
@@ -154,7 +158,7 @@ const AdminUserManagement: React.FC = () => {
       const campaignsArray = Array.isArray(responseData) 
         ? responseData 
         : (responseData?.data || []);
-      console.log('🔍 AdminUserManagement - Campagnes reçues:', campaignsArray);
+      devLogger.log('🔍 AdminUserManagement - Campagnes reçues:', campaignsArray);
       setCampaigns(campaignsArray);
     } catch (error) {
       console.error('Erreur lors du chargement des campagnes:', error);
@@ -166,11 +170,16 @@ const AdminUserManagement: React.FC = () => {
 
   useEffect(() => {
     fetchCampaigns();
-    fetchUsers(1); // Charger la première page au montage
+    fetchUsers(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchCampaigns]);
 
-  // Recharger les données quand les filtres ou la recherche changent (avec debounce)
+  const skipFilterEffect = useRef(true);
   useEffect(() => {
+    if (skipFilterEffect.current) {
+      skipFilterEffect.current = false;
+      return;
+    }
     setCurrentPage(1);
     fetchUsers(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,9 +218,6 @@ const AdminUserManagement: React.FC = () => {
   const handleDeleteUser = async (userId: string) => {
     setActionLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       await enhancedApiService.delete(`/users/${userId}`);
 
@@ -241,9 +247,6 @@ const AdminUserManagement: React.FC = () => {
 
     setActionLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       await enhancedApiService.put(`/users/${userId}/reset-password`, {
         password: newPassword
@@ -389,7 +392,7 @@ const AdminUserManagement: React.FC = () => {
     showSuccess('Export CSV généré avec succès');
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -414,8 +417,13 @@ const AdminUserManagement: React.FC = () => {
             value={searchTerm}
             onChange={handleSearchChange}
             placeholder="Rechercher par nom, email, contact, localisation, campagne, rôle..."
-            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
           />
+          {isRefreshing && (
+            <div className="absolute inset-y-0 right-10 flex items-center pointer-events-none">
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent" />
+            </div>
+          )}
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
@@ -587,7 +595,7 @@ const AdminUserManagement: React.FC = () => {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={`overflow-x-auto transition-opacity duration-200 ${isRefreshing ? 'opacity-60 pointer-events-none' : ''}`}>
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -723,7 +731,7 @@ const AdminUserManagement: React.FC = () => {
                 setCurrentPage(page);
                 fetchUsers(page);
               }}
-              loading={loading}
+              loading={isRefreshing}
             />
           </div>
         )}

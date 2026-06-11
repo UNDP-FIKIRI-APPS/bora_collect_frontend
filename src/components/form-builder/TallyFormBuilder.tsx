@@ -12,7 +12,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { environment } from '../../config/environment';
+import enhancedApiService from '../../services/enhancedApiService';
 import type { FormBlock, FormSchemaV1, FormBlockType } from '../../types/formSchema';
 import {
   createBlock,
@@ -64,8 +64,6 @@ export default function TallyFormBuilder({
   const [published, setPublished] = useState(isPublished);
   const [visible, setVisible] = useState(isVisibleToControllers);
   const dragIndex = useRef<number | null>(null);
-  const apiBaseUrl = environment.apiBaseUrl;
-
   const selectedBlock = schema.blocks.find((b) => b.id === selectedBlockId);
 
   const updateBlock = useCallback((id: string, patch: Partial<FormBlock>) => {
@@ -111,9 +109,6 @@ export default function TallyFormBuilder({
     }
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('Non authentifié');
-
       const payload = {
         name: schema.settings.title,
         description: schema.settings.description,
@@ -124,19 +119,10 @@ export default function TallyFormBuilder({
       };
 
       const isNew = !formId || formId.startsWith('temp_');
-      const url = isNew ? `${apiBaseUrl}/forms` : `${apiBaseUrl}/forms/${formId}`;
-      const res = await fetch(url, {
-        method: isNew ? 'POST' : 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Erreur de sauvegarde');
+      if (isNew) {
+        await enhancedApiService.post('/forms', payload);
+      } else {
+        await enhancedApiService.put(`/forms/${formId}`, payload);
       }
 
       toast.success('Formulaire sauvegardé');
@@ -155,12 +141,7 @@ export default function TallyFormBuilder({
     }
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${apiBaseUrl}/forms/${formId}/publish`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('Publication échouée');
+      await enhancedApiService.post(`/forms/${formId}/publish`);
       setPublished(true);
       toast.success('Formulaire publié — visible par les enquêteurs');
     } catch (e: any) {

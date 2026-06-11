@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { allProvincesSVGData } from "../data/allProvincesSVG";
 import "./CarteRDCSVG.css";
-import { environment } from "../config/environment";
+import enhancedApiService from "../services/enhancedApiService";
+import { devLogger } from '../utils/logger';
+
 
 interface Campaign {
   id: string;
@@ -156,15 +158,6 @@ function CarteRDCSVG({ onProvinceSelect }: CarteRDCSVGProps) {
     }
     
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setProvinceData({
-          province: provinceName,
-          message: "Authentification requise. Veuillez vous connecter."
-        });
-        return;
-      }
-
       const provinceCode = convertProvinceNameToCode(provinceName);
       if (!provinceCode) {
         setProvinceData({
@@ -174,20 +167,14 @@ function CarteRDCSVG({ onProvinceSelect }: CarteRDCSVGProps) {
         return;
       }
 
-      const response = await fetch(
-        `${environment.apiBaseUrl}${statsEndpoint}?province=${encodeURIComponent(provinceName)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
+      const stats = await enhancedApiService.get<any>(
+        `${statsEndpoint}?province=${encodeURIComponent(provinceName)}`,
+        { skipCache: true },
       );
 
-      if (response.ok) {
-        const stats = await response.json();
-        console.log('📊 Données reçues du backend:', stats);
-        console.log('👤 Rôle actuel:', currentRole);
+      if (stats) {
+        devLogger.log('📊 Données reçues du backend:', stats);
+        devLogger.log('👤 Rôle actuel:', currentRole);
         
         // Pour PM, utiliser pmStatistics directement
         // Pour Admin, utiliser statistics
@@ -208,16 +195,10 @@ function CarteRDCSVG({ onProvinceSelect }: CarteRDCSVGProps) {
           dataToSet.pmStatistics = stats.pmStatistics || undefined; // Garder aussi pmStatistics si disponible
         }
 
-        console.log('📦 Données à définir:', dataToSet);
+        devLogger.log('📦 Données à définir:', dataToSet);
         setProvinceData(dataToSet);
-      } else {
-        const errorPayload = await response.json().catch(() => null);
-        setProvinceData({
-          province: provinceName,
-          message: errorPayload?.message || "Erreur lors de la récupération des statistiques."
-        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erreur lors de la récupération des données:', err);
       
       // Gestion des erreurs spécifiques

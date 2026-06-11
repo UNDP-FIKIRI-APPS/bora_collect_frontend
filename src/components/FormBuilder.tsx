@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'react-toastify';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 import ConfirmationModal from './ConfirmationModal';
 import TallyFormBuilder from './form-builder/TallyFormBuilder';
+import { devLogger } from '../utils/logger';
+
 
 export interface FormField {
   id: string;
@@ -63,8 +65,6 @@ const FormBuilder: React.FC = () => {
   // Référence pour synchroniser les données des champs
   const fieldDataRef = useRef<Map<string, Partial<FormField>>>(new Map());
 
-  const apiBaseUrl = environment.apiBaseUrl;
-
   // Normalise un schéma de champs (objet imbriqué) en tableau de FormField pour l'éditeur
   const normalizeFormFields = useCallback((fields: any): FormField[] => {
     if (!fields) return [];
@@ -120,69 +120,36 @@ const FormBuilder: React.FC = () => {
 
   const fetchPublishedSurveys = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      // Vérifier le rôle de l'utilisateur
       const userData = localStorage.getItem('user');
       if (!userData) return;
-      
+
       const user = JSON.parse(userData);
-      
-      // Utiliser l'endpoint approprié selon le rôle
-      const endpoint = user.role === 'PROJECT_MANAGER' 
-        ? `${apiBaseUrl}/forms/pm-campaigns`
-        : `${apiBaseUrl}/surveys/published`;
+      const endpoint = user.role === 'PROJECT_MANAGER'
+        ? '/forms/pm-campaigns'
+        : '/surveys/published';
 
-      const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSurveys(data);
-        console.log(`✅ ${data.length} campagnes chargées pour ${user.role}`);
-      } else {
-        console.error('Erreur lors du chargement des campagnes:', response.status);
-      }
+      const data = await enhancedApiService.get<any[]>(endpoint, { skipCache: true });
+      setSurveys(data);
+      devLogger.log(`✅ ${data.length} campagnes chargées pour ${user.role}`);
     } catch (error) {
       console.error('Erreur lors du chargement des campagnes:', error);
     }
-  }, [apiBaseUrl]);
+  }, []);
 
   const fetchExistingForms = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Token d\'authentification manquant');
-        return;
-      }
-
-      const response = await fetch(`${apiBaseUrl}/forms`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Convertir les dates string en objets Date
-        const formsWithDates = data.map((form: any) => ({
-          ...form,
-          createdAt: new Date(form.createdAt),
-          updatedAt: new Date(form.updatedAt),
-          fields: form.fields,
-        }));
-        setForms(formsWithDates);
-      }
+      const data = await enhancedApiService.get<any[]>('/forms', { skipCache: true });
+      const formsWithDates = data.map((form: any) => ({
+        ...form,
+        createdAt: new Date(form.createdAt),
+        updatedAt: new Date(form.updatedAt),
+        fields: form.fields,
+      }));
+      setForms(formsWithDates);
     } catch (error) {
       console.error('Erreur lors du chargement des formulaires:', error);
     }
-  }, [apiBaseUrl, normalizeFormFields]);
+  }, [normalizeFormFields]);
 
   const fieldTypes = [
     { value: 'text', label: 'Texte simple', icon: 'text' },
@@ -338,13 +305,7 @@ const FormBuilder: React.FC = () => {
     try {
       setLoading(true);
       
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Token d\'authentification manquant');
-        return;
-      }
-
-      console.log('Début de la sauvegarde:', {
+      devLogger.log('Début de la sauvegarde:', {
         formId: currentForm.id,
         isExistingForm: currentForm.id && currentForm.id !== Date.now().toString() && !currentForm.id.startsWith('temp_'),
         fieldsCount: currentForm.fields.length,
@@ -370,117 +331,57 @@ const FormBuilder: React.FC = () => {
          isVisibleToControllers: currentForm.isVisibleToControllers,
        };
 
-       console.log('Données à envoyer:', formData);
+       devLogger.log('Données à envoyer:', formData);
 
-      let response;
-      // Vérifier si c'est un formulaire existant (avec un ID qui n'est pas un timestamp récent)
-      const isExistingForm = currentForm.id && 
-        currentForm.id !== Date.now().toString() && 
+      const isExistingForm = currentForm.id &&
+        currentForm.id !== Date.now().toString() &&
         !currentForm.id.startsWith('temp_');
-      
+
       if (isExistingForm) {
-        // Mise à jour d'un formulaire existant
-        response = await fetch(`${apiBaseUrl}/forms/${currentForm.id}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData),
-        });
+        await enhancedApiService.put(`/forms/${currentForm.id}`, formData);
       } else {
-        // Création d'un nouveau formulaire
-        response = await fetch(`${apiBaseUrl}/forms`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData),
-        });
+        await enhancedApiService.post('/forms', formData);
       }
 
-      if (response.ok) {
-        const savedForm = await response.json();
-        toast.success('Formulaire sauvegardé avec succès !');
-        
-        // Recharger les formulaires depuis le serveur
-        await fetchExistingForms();
-
-    setShowBuilder(false);
-    setCurrentForm(null);
-      } else {
-        const errorData = await response.json();
-        console.error('Erreur de sauvegarde:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData,
-          formData: formData
-        });
-        toast.error(`Erreur ${response.status}: ${errorData.message || 'Erreur lors de la sauvegarde du formulaire'}`);
-      }
-    } catch (error) {
+      toast.success('Formulaire sauvegardé avec succès !');
+      await fetchExistingForms();
+      setShowBuilder(false);
+      setCurrentForm(null);
+    } catch (error: any) {
       console.error('Erreur lors de la sauvegarde:', error);
-      toast.error('Erreur lors de la sauvegarde du formulaire');
+      toast.error(error?.message || 'Erreur lors de la sauvegarde du formulaire');
     } finally {
       setLoading(false);
     }
-  }, [currentForm, apiBaseUrl, fetchExistingForms]);
+  }, [currentForm, fetchExistingForms]);
 
   const toggleFormVisibility = useCallback(async (formId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Token d\'authentification manquant');
-        return;
-      }
-
-      const response = await fetch(`${apiBaseUrl}/forms/${formId}/toggle-visibility`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const updatedForm = await response.json();
-        toast.success('Visibilité du formulaire mise à jour');
-        
-        // Mettre à jour l'état local
-        setForms(prevForms => 
-          prevForms.map(form => 
-            form.id === formId 
-              ? { ...form, isVisibleToControllers: updatedForm.isVisibleToControllers }
-              : form
-          )
-        );
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || 'Erreur lors de la mise à jour de la visibilité');
-      }
-    } catch (error) {
+      const updatedForm = await enhancedApiService.post<any>(`/forms/${formId}/toggle-visibility`);
+      toast.success('Visibilité du formulaire mise à jour');
+      setForms((prevForms) =>
+        prevForms.map((form) =>
+          form.id === formId
+            ? { ...form, isVisibleToControllers: updatedForm.isVisibleToControllers }
+            : form,
+        ),
+      );
+    } catch (error: any) {
       console.error('Erreur lors de la mise à jour de la visibilité:', error);
-      toast.error('Erreur lors de la mise à jour de la visibilité');
+      toast.error(error?.message || 'Erreur lors de la mise à jour de la visibilité');
     }
-  }, [apiBaseUrl]);
+  }, []);
 
   // Fonction de test pour vérifier la visibilité d'un formulaire
   const testFormVisibility = useCallback(async (formId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Token d\'authentification manquant');
-        return;
-      }
-
       const form = forms.find(f => f.id === formId);
       if (!form) {
         toast.error('Formulaire non trouvé');
         return;
       }
 
-      console.log('🧪 Test de visibilité pour le formulaire:', {
+      devLogger.log('🧪 Test de visibilité pour le formulaire:', {
         id: form.id,
         name: form.name,
         surveyId: form.surveyId,
@@ -489,64 +390,35 @@ const FormBuilder: React.FC = () => {
       });
 
       // Test de l'endpoint des formulaires disponibles
-      const response = await fetch(`${apiBaseUrl}/forms/available-for-controller`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      const availableForms = await enhancedApiService.get<any[]>('/forms/available-for-controller', {
+        skipCache: true,
       });
+      devLogger.log('Formulaires disponibles pour test:', availableForms);
 
-      if (response.ok) {
-        const availableForms = await response.json();
-        console.log('Formulaires disponibles pour test:', availableForms);
-        
-        const isVisible = availableForms.some((f: any) => f.id === formId);
-        if (isVisible) {
-          toast.success(`✅ Le formulaire "${form.name}" est visible pour les contrôleurs`);
-        } else {
-          toast.warning(`⚠️ Le formulaire "${form.name}" n'est PAS visible pour les contrôleurs`);
-        }
+      const isVisible = availableForms.some((f: any) => f.id === formId);
+      if (isVisible) {
+        toast.success(`✅ Le formulaire "${form.name}" est visible pour les contrôleurs`);
       } else {
-        toast.error('Erreur lors du test de visibilité');
+        toast.warning(`⚠️ Le formulaire "${form.name}" n'est PAS visible pour les contrôleurs`);
       }
     } catch (error) {
       console.error('Erreur lors du test de visibilité:', error);
       toast.error('Erreur lors du test de visibilité');
     }
-  }, [apiBaseUrl, forms]);
+  }, [forms]);
 
   const deleteForm = useCallback(async (formId: string, formName?: string) => {
     // Cette fonction sera appelée depuis le modal de confirmation
 
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Token d\'authentification manquant');
-        return;
-      }
-
-      const response = await fetch(`${apiBaseUrl}/forms/${formId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        toast.success('Formulaire supprimé');
-        
-        // Mettre à jour l'état local
-        setForms(prevForms => prevForms.filter(form => form.id !== formId));
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || 'Erreur lors de la suppression');
-      }
-    } catch (error) {
+      await enhancedApiService.delete(`/forms/${formId}`);
+      toast.success('Formulaire supprimé');
+      setForms((prevForms) => prevForms.filter((form) => form.id !== formId));
+    } catch (error: any) {
       console.error('Erreur lors de la suppression:', error);
-      toast.error('Erreur lors de la suppression du formulaire');
+      toast.error(error?.message || 'Erreur lors de la suppression du formulaire');
     }
-  }, [apiBaseUrl]);
+  }, []);
 
   const getSurveyTitle = useCallback((surveyId: string) => {
     const survey = surveys.find(s => s.id === surveyId);

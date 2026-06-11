@@ -30,6 +30,8 @@ interface PendingRequest {
  * - Déduplication des requêtes
  * - Logging structuré
  */
+const USE_HTTPONLY_COOKIES = import.meta.env.VITE_USE_HTTPONLY_COOKIES !== 'false';
+
 class EnhancedApiService {
   private baseURL: string;
   private timeout: number;
@@ -50,26 +52,47 @@ class EnhancedApiService {
     
     // Nettoyer les requêtes en attente expirées
     setInterval(() => this.cleanPendingRequests(), 60 * 1000);
+
+    // Rafraîchissement proactif du token (toutes les 12h) pour les longues journées de terrain
+    setInterval(() => {
+      if (USE_HTTPONLY_COOKIES || (this.getToken() && this.getRefreshToken())) {
+        void this.refreshToken().catch(() => {
+          // Ignorer : le prochain appel API déclenchera un refresh ou une reconnexion
+        });
+      }
+    }, 12 * 60 * 60 * 1000);
+  }
+
+  private useCookies(): boolean {
+    return USE_HTTPONLY_COOKIES;
   }
 
   /**
-   * Obtient le token depuis localStorage
+   * Obtient le token depuis localStorage (fallback si cookies désactivés)
    */
   private getToken(): string | null {
+    if (this.useCookies()) {
+      return null;
+    }
     return localStorage.getItem('token');
   }
 
   private getRefreshToken(): string | null {
+    if (this.useCookies()) {
+      return 'cookie';
+    }
     return localStorage.getItem('refresh_token');
   }
 
   /**
-   * Sauvegarde les tokens de session
+   * Sauvegarde les tokens de session (localStorage uniquement si cookies désactivés)
    */
   private setTokens(accessToken: string, refreshToken?: string, sessionId?: string): void {
-    localStorage.setItem('token', accessToken);
-    if (refreshToken) {
-      localStorage.setItem('refresh_token', refreshToken);
+    if (!this.useCookies()) {
+      localStorage.setItem('token', accessToken);
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken);
+      }
     }
     if (sessionId) {
       localStorage.setItem('sessionId', sessionId);
@@ -86,15 +109,18 @@ class EnhancedApiService {
 
     this.refreshTokenPromise = (async () => {
       try {
-        const storedRefreshToken = this.getRefreshToken();
-        if (!storedRefreshToken) {
+        const storedRefreshToken = this.useCookies() ? null : localStorage.getItem('refresh_token');
+        if (!this.useCookies() && !storedRefreshToken) {
           throw new Error('No refresh token available');
         }
 
         const response = await fetch(`${this.baseURL}/auth/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: storedRefreshToken }),
+          credentials: 'include',
+          body: storedRefreshToken
+            ? JSON.stringify({ refresh_token: storedRefreshToken })
+            : undefined,
         });
 
         if (!response.ok) {
@@ -125,19 +151,19 @@ class EnhancedApiService {
    * Déconnexion côté serveur puis nettoyage local
    */
   async logout(): Promise<void> {
-    const token = this.getToken();
-    const refreshToken = this.getRefreshToken();
+    const token = localStorage.getItem('token');
+    const refreshToken = localStorage.getItem('refresh_token');
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) {
-        await fetch(`${this.baseURL}/auth/logout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
+        headers.Authorization = `Bearer ${token}`;
       }
+      await fetch(`${this.baseURL}/auth/logout`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined,
+      });
     } catch {
       // Nettoyage local même si l'API échoue
     }
@@ -267,6 +293,14 @@ class EnhancedApiService {
       throw new Error(errorData.message || `Erreur serveur (${status}). Veuillez réessayer plus tard.`);
     }
 
+    // 401 après échec de refresh
+    if (status === 401) {
+      const errorData = await this.parseResponse(response).catch(() => ({}));
+      throw new Error(
+        errorData.message || 'Session expirée. Veuillez vous reconnecter.',
+      );
+    }
+
     // Autres erreurs
     const errorData = await this.parseResponse(response).catch(() => ({}));
     throw new Error(errorData.message || `Erreur HTTP ${status}`);
@@ -334,6 +368,7 @@ class EnhancedApiService {
         const response = await fetch(url, {
           ...fetchOptions,
           headers,
+          credentials: 'include',
           signal: controller.signal,
         });
 
@@ -508,6 +543,96 @@ class EnhancedApiService {
       body: formData,
       skipCache: true, // Ne pas cacher les uploads
     });
+  }
+
+  /**
+   * Télécharge un fichier binaire (export Excel, CSV, PDF, etc.)
+   */
+  async downloadBlob(
+    endpoint: string,
+    options: RequestOptions = {},
+  ): Promise<{ blob: Blob; filename?: string }> {
+    const isFullUrl = endpoint.startsWith('http://') || endpoint.startsWith('https://');
+    const url = isFullUrl ? endpoint : `${this.baseURL}${endpoint}`;
+
+    const {
+      skipAuth = false,
+      skipToast = false,
+      retry = this.MAX_RETRIES,
+      retryDelay = this.RETRY_DELAY,
+      ...fetchOptions
+    } = options;
+
+    const attempt = async (retryCount: number): Promise<{ blob: Blob; filename?: string }> => {
+      const headers: Record<string, string> = {
+        ...(fetchOptions.headers as Record<string, string> || {}),
+      };
+
+      if (!skipAuth) {
+        const token = this.getToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      try {
+        const response = await fetch(url, {
+          ...fetchOptions,
+          method: fetchOptions.method || 'GET',
+          headers,
+          credentials: 'include',
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          if (response.status === 401 && retryCount === 0 && !skipAuth) {
+            try {
+              await this.refreshToken();
+              return attempt(retryCount + 1);
+            } catch {
+              await this.handleError(response, url, retryCount, skipAuth);
+            }
+          }
+          await this.handleError(response, url, retryCount, skipAuth);
+        }
+
+        const blob = await response.blob();
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename: string | undefined;
+        if (contentDisposition) {
+          const fileNameMatch = contentDisposition.match(/filename="(.+)"/);
+          if (fileNameMatch) {
+            filename = fileNameMatch[1];
+          }
+        }
+
+        return { blob, filename };
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+
+        if (
+          retryCount < retry &&
+          (error.name === 'AbortError' ||
+            error.name === 'TypeError' ||
+            error.message?.includes('fetch'))
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay * (retryCount + 1)));
+          return attempt(retryCount + 1);
+        }
+
+        if (error.message && !skipToast) {
+          toast.error(error.message);
+        }
+        throw error;
+      }
+    };
+
+    return attempt(0);
   }
 
   /**

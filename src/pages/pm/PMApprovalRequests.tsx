@@ -3,6 +3,8 @@ import { toast } from 'react-toastify';
 import { environment } from '../../config/environment';
 import enhancedApiService from '../../services/enhancedApiService';
 import Pagination from '../../components/Pagination';
+import { devLogger } from '../../utils/logger';
+
 
 interface PendingUser {
   id: string;
@@ -121,13 +123,6 @@ const PMApprovalRequests: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const fetchPendingApprovals = async (status?: string) => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
-        setLoading(false);
-        return;
-      }
-
       // Utilisation du nouveau service API
       const allData = await enhancedApiService.get<PendingUser[]>('/users/pm-pending-approvals', {
         skipCache: true, // Forcer le refresh
@@ -145,7 +140,7 @@ const PMApprovalRequests: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
         setPendingUsers(allData);
       }
     } catch (error) {
-      console.log('❌ Erreur de connexion au serveur:', error);
+      devLogger.log('❌ Erreur de connexion au serveur:', error);
     } finally {
       setLoading(false);
     }
@@ -153,11 +148,6 @@ const PMApprovalRequests: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
 
   const fetchApprovalStats = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        return;
-      }
-
       // Utilisation du nouveau service API
       const data = await enhancedApiService.get<ApprovalStats>('/users/pm-approval-stats', {
         skipCache: true, // Forcer le refresh

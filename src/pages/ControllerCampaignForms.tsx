@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { toast } from 'react-toastify';
 import { Loader2 } from 'lucide-react';
-import { environment } from '../config/environment';
 import LocationInput from '../components/LocationInput';
+import enhancedApiService from '../services/enhancedApiService';
 import {
-  evaluateConditional,
+evaluateConditional,
   extractFieldsFromFormSchema,
   getSectionSortOrder,
 } from '../utils/formSchema';
+import { devLogger } from '../utils/logger';
 
 interface Campaign {
   id: string;
@@ -176,7 +177,7 @@ const ControllerCampaignForms: React.FC = () => {
         }
         
         // Log pour débogage
-        console.log(`📍 GPS capturé: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}, Précision: ${Math.round(accuracy)}m`);
+        devLogger.log(`📍 GPS capturé: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}, Précision: ${Math.round(accuracy)}m`);
         
         setGeolocation({ latitude, longitude, accuracy, timestamp, isCapturing: false, error: null, province: null, provinceStatus: 'idle' });
         setFormData(prev => ({
@@ -200,60 +201,39 @@ const ControllerCampaignForms: React.FC = () => {
       options
     );
   };
-  const apiBaseUrl = environment.apiBaseUrl;
-
   useEffect(() => {
     fetchApprovedCampaigns();
-    localStorage.removeItem('offlineSubmissions');
-    localStorage.removeItem('local_records');
   }, []);
 
   const fetchApprovedCampaigns = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
-        return;
-      }
-
-      // Récupérer les campagnes pour lesquelles l'utilisateur est approuvé
-      const response = await fetch(`${apiBaseUrl}/users/enumerator-campaigns`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      const applicationsData = await enhancedApiService.get<any[]>('/users/enumerator-campaigns', {
+        skipCache: true,
       });
 
-      if (response.ok) {
-        const applicationsData = await response.json();
-        
-        // Extraire les campagnes des applications
-        const now = new Date();
-        const campaignsFromApplications = applicationsData.map((app: any) => {
-          const endDate = app.survey.endDate ? new Date(app.survey.endDate) : null;
-          const isExpired = endDate ? endDate < now : false;
-          return {
-            id: app.survey.id,
-            title: app.survey.title,
-            description: app.survey.description,
-            startDate: app.survey.startDate,
-            endDate: app.survey.endDate,
-            status: app.survey.status,
-            publishedAt: app.survey.publishedAt,
-            publisher: app.survey.publisher,
-            isExpired
-          };
-        });
-        
-        setCampaigns(campaignsFromApplications);
-      } else {
-        // Réduire les logs pour améliorer les performances
-        toast.error('Erreur lors du chargement des campagnes');
+      const now = new Date();
+      const campaignsFromApplications = applicationsData.map((app: any) => {
+        const endDate = app.survey.endDate ? new Date(app.survey.endDate) : null;
+        const isExpired = endDate ? endDate < now : false;
+        return {
+          id: app.survey.id,
+          title: app.survey.title,
+          description: app.survey.description,
+          startDate: app.survey.startDate,
+          endDate: app.survey.endDate,
+          status: app.survey.status,
+          publishedAt: app.survey.publishedAt,
+          publisher: app.survey.publisher,
+          isExpired,
+        };
+      });
+
+      setCampaigns(campaignsFromApplications);
+    } catch (error: any) {
+      const message = error?.message || 'Erreur lors du chargement des campagnes';
+      if (!message.includes('Session expirée')) {
+        toast.error(message);
       }
-    } catch (error) {
-      // Réduire les logs pour améliorer les performances
-      toast.error('Erreur de connexion au serveur');
-      toast.error('Erreur de connexion au serveur');
     } finally {
       setLoading(false);
     }
@@ -281,62 +261,41 @@ const ControllerCampaignForms: React.FC = () => {
     }
     
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
+      const responseData = await enhancedApiService.get<any>(`/forms/by-survey/${campaignId}`, {
+        skipCache: true,
+      });
+
+      if (responseData.isExpired) {
+        toast.warning(responseData.message || 'Cette campagne est terminée');
+        setSelectedForm(null);
         setFormsLoading(false);
         return;
       }
 
-      // Récupérer les formulaires de la campagne sélectionnée
-      const response = await fetch(`${apiBaseUrl}/forms/by-survey/${campaignId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const formsData = Array.isArray(responseData) ? responseData : (responseData.forms || []);
 
-      if (response.ok) {
-        const responseData = await response.json();
-        
-        // Vérifier si la campagne est expirée
-        if (responseData.isExpired) {
-          toast.warning(responseData.message || 'Cette campagne est terminée');
-          setSelectedForm(null);
-          setFormsLoading(false);
-          return;
-        }
-        
-        // Si c'est un tableau (ancien format) ou un objet avec forms
-        const formsData = Array.isArray(responseData) ? responseData : (responseData.forms || []);
-        
-        if (formsData.length > 0) {
-          // Ouvrir directement le premier formulaire actif
-          const activeForm = formsData.find((form: FormTemplate) => form.isActive);
-          if (activeForm) {
-            setSelectedForm(activeForm);
-          } else {
-            toast.warning('Aucun formulaire actif trouvé pour cette campagne');
-            setSelectedForm(null);
-          }
+      if (formsData.length > 0) {
+        const activeForm = formsData.find((form: FormTemplate) => form.isActive);
+        if (activeForm) {
+          setSelectedForm(activeForm);
         } else {
-          toast.warning('Aucun formulaire trouvé pour cette campagne');
+          toast.warning('Aucun formulaire actif trouvé pour cette campagne');
           setSelectedForm(null);
         }
       } else {
-        const errorText = await response.text();
-        console.error('❌ Erreur lors du chargement des formulaires:', response.status, errorText);
-        toast.error(`Erreur lors du chargement des formulaires: ${response.status}`);
+        toast.warning('Aucun formulaire trouvé pour cette campagne');
         setSelectedForm(null);
       }
-    } catch (error) {
-      console.error('❌ Erreur de connexion au serveur:', error);
-      toast.error('Erreur de connexion au serveur');
+    } catch (error: any) {
+      const message = error?.message || 'Erreur lors du chargement des formulaires';
+      if (!message.includes('Session expirée')) {
+        toast.error(message);
+      }
       setSelectedForm(null);
     } finally {
       setFormsLoading(false);
     }
-  }, [apiBaseUrl, campaigns]);
+  }, [campaigns]);
 
   const getSubmissionFormData = useCallback(() => {
     const data = { ...formData };
@@ -561,20 +520,7 @@ const ControllerCampaignForms: React.FC = () => {
     };
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${apiBaseUrl}/records`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(submissionData),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.message || 'Erreur lors de la soumission');
-      }
+      await enhancedApiService.post('/records', submissionData);
 
       toast.success('Formulaire soumis avec succès !');
       setFormData({});
@@ -781,7 +727,7 @@ const ControllerCampaignForms: React.FC = () => {
                                       }
                                       
                                       // Log pour débogage
-                                      console.log(`📍 GPS capturé: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}, Précision: ${Math.round(accuracy)}m`);
+                                      devLogger.log(`📍 GPS capturé: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}, Précision: ${Math.round(accuracy)}m`);
                                       
                                       const coordsValue = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
                                       handleFieldChange(fieldId, coordsValue);
@@ -856,7 +802,9 @@ const ControllerCampaignForms: React.FC = () => {
                                     ? 'Sélectionnez...'
                                     : /quartier/i.test(field.id) || /quartier/i.test(field.label)
                                       ? 'Sélectionnez...'
-                                      : 'Sélectionnez une option'}
+                                      : /âge|age|tranche/i.test(field.label) || /\.age$/i.test(field.id)
+                                        ? "Sélectionnez votre tranche d'âge"
+                                        : 'Sélectionnez une option'}
                                 </option>
                                 {field.options.map((option: string, optIndex: number) => (
                                   <option key={optIndex} value={option}>{option}</option>

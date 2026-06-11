@@ -5,17 +5,17 @@ import { environment } from '../config/environment';
 import { APP_LOGO_URL } from '../config/branding';
 import enhancedApiService from '../services/enhancedApiService';
 import { getCitiesByProvince, getCommunesByCity } from '../data/citiesData';
-import { getQuartiersByCommune } from '../data/quartiersData';
-import PublicFormSchemaView, { usesFormSchemaV1 } from './PublicFormSchemaView';
+import { useQuartiers } from '../hooks/useQuartiers';
 import { extractFieldsFromFormSchema } from '../utils/formSchema';
 import {
-  isCommuneFormField,
+isCommuneFormField,
   isFieldValueEmpty,
   isGpsFormField,
   isQuartierFormField,
   normalizeSubmissionFormData,
   validateFormLocation,
 } from '../utils/formValidation';
+import { devLogger } from '../utils/logger';
 
 interface FormField {
   id: string;
@@ -114,6 +114,7 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitterName, setSubmitterName] = useState('');
   const [submitterContact, setSubmitterContact] = useState('');
+  const [honeypot, setHoneypot] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   
@@ -131,6 +132,11 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
   const [showCustomCommune, setShowCustomCommune] = useState(false);
   const [customQuartier, setCustomQuartier] = useState('');
   const [showCustomQuartier, setShowCustomQuartier] = useState(false);
+  const quartiers = useQuartiers(
+    showCustomCommune || showCustomCity ? '' : addressData.province,
+    showCustomCommune || showCustomCity ? '' : addressData.city,
+    showCustomCommune || showCustomCity ? '' : addressData.commune,
+  );
 
   useEffect(() => {
     const validateLink = async () => {
@@ -299,9 +305,9 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
         key.includes('geolocalisation') || key.includes('GPS')
       );
       if (gpsKeys.length > 0) {
-        console.log('📊 GPS trouvé dans formData:', gpsKeys.map(key => ({ key, value: transformedFormData[key] })));
+        devLogger.log('📊 GPS trouvé dans formData:', gpsKeys.map(key => ({ key, value: transformedFormData[key] })));
       } else {
-        console.log('📍 Adresse manuelle utilisée pour la localisation');
+        devLogger.log('📍 Adresse manuelle utilisée pour la localisation');
       }
 
       // Utilisation du nouveau service API (skipAuth car c'est un lien public)
@@ -309,6 +315,7 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
         formData: transformedFormData,
         submitterName: submitterName || undefined,
         submitterContact: submitterContact || undefined,
+        _hp: honeypot || undefined,
       }, {
         skipAuth: true,
       });
@@ -388,11 +395,11 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
         const coordsValue = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
         
         // Log pour débogage
-        console.log(`📍 GPS capturé: ${coordsValue}, Précision: ${accuracyMeters}m`);
+        devLogger.log(`📍 GPS capturé: ${coordsValue}, Précision: ${accuracyMeters}m`);
         
         // Enregistrer simplement les coordonnées GPS
         handleInputChange(fieldId, coordsValue);
-        console.log('✅ Coordonnées GPS enregistrées avec succès');
+        devLogger.log('✅ Coordonnées GPS enregistrées avec succès');
       },
       (error) => {
         let errorMessage = 'Impossible de capturer la position GPS.';
@@ -607,7 +614,11 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             className={commonClasses}
           >
-            <option value="">Sélectionner...</option>
+            <option value="">
+              {/âge|age|tranche/i.test(field.label) || /\.age$/i.test(field.id)
+                ? "Sélectionnez votre tranche d'âge"
+                : 'Sélectionner...'}
+            </option>
             {field.options?.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -723,34 +734,6 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
     );
   }
 
-  if (linkData && usesFormSchemaV1(linkData as any) && token) {
-    return (
-      <div className={embedMode ? 'bg-white min-h-screen' : 'min-h-screen bg-gradient-to-b from-blue-50 via-white to-blue-50'}>
-        {!embedMode && (
-          <header className="bg-white border-b border-slate-100 sticky top-0 z-10">
-            <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-              <Link to="/" className="flex items-center gap-3">
-                <img src={APP_LOGO_URL} alt="Fikiri Collect" className="h-10 w-auto object-contain" />
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-blue-600">Fikiri Collect</p>
-                  <p className="text-sm font-semibold text-slate-900">Formulaire public</p>
-                </div>
-              </Link>
-            </div>
-          </header>
-        )}
-        <main className={embedMode ? 'p-2' : 'max-w-2xl mx-auto px-4 py-8'}>
-          <PublicFormSchemaView token={token} linkData={linkData as any} embedMode={embedMode} />
-        </main>
-        {!embedMode && (
-          <footer className="border-t border-slate-100 bg-white mt-12 py-6 text-center text-sm text-slate-500">
-            <p>© {new Date().getFullYear()} Fikiri Collect</p>
-          </footer>
-        )}
-      </div>
-    );
-  }
-
   if (submitted) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-blue-50 flex items-center justify-center p-4">
@@ -794,10 +777,10 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-2xl mx-auto px-4 py-8">
+      <main className="max-w-2xl mx-auto px-3 sm:px-4 py-6 sm:py-8" role="main" aria-labelledby="survey-title">
         {/* Survey Info */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">{linkData?.survey?.title}</h1>
+        <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 mb-6">
+          <h1 id="survey-title" className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">{linkData?.survey?.title}</h1>
           <p className="text-slate-600 mb-4">{linkData?.survey?.description}</p>
           <p className="text-sm text-slate-500">
             Enquête partagée par <span className="font-medium text-blue-600">{linkData?.enumerator?.name}</span>
@@ -806,32 +789,48 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
 
         {/* Form */}
         {formTemplate ? (
-          <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">{formTemplate.name}</h2>
+          <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg p-4 sm:p-6" noValidate>
+            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">{formTemplate.name}</h2>
             <p className="text-slate-600 text-sm mb-6">{formTemplate.description}</p>
+
+            {/* Honeypot anti-spam — champ caché pour les bots */}
+            <div className="absolute -left-[9999px] w-px h-px overflow-hidden" aria-hidden="true">
+              <label htmlFor="_hp">Ne pas remplir</label>
+              <input
+                type="text"
+                id="_hp"
+                name="_hp"
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+              />
+            </div>
 
             {/* Submitter Info (optional) */}
             <div className="bg-slate-50 rounded-xl p-4 mb-6">
               <p className="text-sm font-medium text-slate-700 mb-3">Informations (optionnel)</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Votre nom</label>
+                  <label htmlFor="submitterName" className="block text-sm text-slate-600 mb-1">Votre nom</label>
                   <input
+                    id="submitterName"
                     type="text"
                     value={submitterName}
                     onChange={(e) => setSubmitterName(e.target.value)}
                     placeholder="Nom complet"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Contact</label>
+                  <label htmlFor="submitterContact" className="block text-sm text-slate-600 mb-1">Contact</label>
                   <input
+                    id="submitterContact"
                     type="text"
                     value={submitterContact}
                     onChange={(e) => setSubmitterContact(e.target.value)}
                     placeholder="Téléphone ou email"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -1096,7 +1095,7 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
                       required={locationType === 'address'}
                     >
                       <option value="">Sélectionnez votre quartier</option>
-                      {!showCustomCommune && !showCustomCity && getQuartiersByCommune(addressData.province, addressData.city, addressData.commune).map((quartier, index) => (
+                      {!showCustomCommune && !showCustomCity && quartiers.map((quartier, index) => (
                         <option key={index} value={quartier}>
                           {quartier}
                         </option>
@@ -1190,7 +1189,11 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
 
             {/* Error Message */}
             {error && (
-              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm"
+              >
                 {error}
               </div>
             )}
@@ -1199,7 +1202,8 @@ const PublicFormPage = ({ embedMode = false }: PublicFormPageProps) => {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-8 w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-busy={submitting}
+              className="mt-8 w-full min-h-11 flex items-center justify-center gap-2 bg-blue-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? (
                 <>

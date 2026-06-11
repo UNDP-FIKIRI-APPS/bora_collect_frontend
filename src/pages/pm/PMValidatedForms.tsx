@@ -7,6 +7,8 @@ import { Download } from 'lucide-react';
 import SuccessNotification from '../../components/SuccessNotification';
 import Pagination from '../../components/Pagination';
 import enhancedApiService from '../../services/enhancedApiService';
+import { devLogger } from '../../utils/logger';
+
 
 // Styles CSS pour les animations de retournement
 const flipCardStyles = `
@@ -119,9 +121,6 @@ const PMValidatedForms: React.FC = () => {
   const fetchEnumeratorStats = async (campaignId: string) => {
     setEnumeratorStatsLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const data = await enhancedApiService.get<any>(`/records/campaign/${campaignId}/enumerators/stats`, {
         skipCache: true,
@@ -139,9 +138,6 @@ const PMValidatedForms: React.FC = () => {
   const fetchEnumeratorSubmissions = async (enumeratorId: string, campaignId: string) => {
     setEnumeratorSubmissionsLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const data = await enhancedApiService.get<any>(`/records/campaign/${campaignId}/enumerator/${enumeratorId}/submissions`, {
         skipCache: true,
@@ -159,15 +155,9 @@ const PMValidatedForms: React.FC = () => {
   const fetchValidatedForms = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.error('❌ Aucun token trouvé');
-        return;
-      }
-
       // Utilisation du nouveau service API
       const data = await enhancedApiService.get<any[]>('/surveys/pm-validated-forms');
-      console.log('✅ Formulaires validés récupérés:', data);
+      devLogger.log('✅ Formulaires validés récupérés:', data);
       setValidatedForms(data);
 
       const uniqueCampaigns = Array.from(

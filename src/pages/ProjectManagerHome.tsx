@@ -1,11 +1,13 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { APP_LOGO_URL } from '../config/branding';
-import FormBuilder from '../components/FormBuilder';
 import PNUDFooter from '../components/PNUDFooter';
 import NotificationPanel from '../components/NotificationPanel';
-import { environment } from '../config/environment';
 import { performLogout } from '../utils/authStorage';
+import enhancedApiService from '../services/enhancedApiService';
+import { environment } from '../config/environment';
+import { devLogger } from '../utils/logger';
+
 
 // Lazy loading pour toutes les pages PM
 const DashboardPM = lazy(() => import('./pm/DashboardPM'));
@@ -39,35 +41,8 @@ const ProjectManagerHome = () => {
   // Fonction pour charger les compteurs de demandes en attente pour PM
   const fetchPendingCounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.log('⚠️ Aucun token trouvé, redirection vers login');
-        navigate('/login');
-        return;
-      }
-
-      const res = await fetch(`${environment.apiBaseUrl}/surveys/pm-pending-counts`, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-      });
-      
-      if (res.status === 401) {
-        console.log('⚠️ Token expiré ou invalide, déconnexion');
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        navigate('/login');
-        return;
-      }
-      
-      if (!res.ok) {
-        console.error('❌ Erreur lors du chargement des compteurs:', res.status, res.statusText);
-        return;
-      }
-      
-      const data = await res.json();
-      console.log('🔔 PM Home - Compteurs mis à jour:', data);
+      const data = await enhancedApiService.get<any>('/surveys/pm-pending-counts', { skipCache: true });
+      devLogger.log('🔔 PM Home - Compteurs mis à jour:', data);
       setPendingCounts(data);
     } catch (err: any) {
       console.error('❌ Erreur lors du chargement des compteurs:', err.message);
@@ -76,42 +51,33 @@ const ProjectManagerHome = () => {
 
   // Fonction pour rafraîchir manuellement les compteurs
   const refreshPendingCounts = () => {
-    console.log('🔄 PM Home - Rafraîchissement manuel des compteurs');
+    devLogger.log('🔄 PM Home - Rafraîchissement manuel des compteurs');
     fetchPendingCounts();
   };
 
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) {
+        if (!localStorage.getItem('user')) {
           navigate('/login');
           return;
         }
 
-        // Charger les données utilisateur depuis le serveur pour avoir les données fraîches
-        const response = await fetch(`${environment.apiBaseUrl}/auth/me`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (response.ok) {
-          const userData = await response.json();
-          console.log('🔍 PM Home - Données utilisateur reçues:', userData);
+        try {
+          const userData = await enhancedApiService.get<{ user: any }>('/auth/me', { skipCache: true });
+          devLogger.log('🔍 PM Home - Données utilisateur reçues:', userData);
           setUser(userData.user);
           localStorage.setItem('user', JSON.stringify(userData.user));
-          
-          // Vérifier que l'utilisateur est bien un PROJECT_MANAGER
+
           if (userData.user.role !== 'PROJECT_MANAGER') {
-            console.log('❌ PM Home - Rôle incorrect:', userData.user.role);
+            devLogger.log('❌ PM Home - Rôle incorrect:', userData.user.role);
             navigate('/login');
             return;
           }
-          
-          console.log('✅ PM Home - Utilisateur PM chargé:', userData.user.name);
-        } else {
-          console.log('⚠️ PM Home - API /auth/me échouée, fallback localStorage');
+
+          devLogger.log('✅ PM Home - Utilisateur PM chargé:', userData.user.name);
+        } catch {
+          devLogger.log('⚠️ PM Home - API /auth/me échouée, fallback localStorage');
           // Fallback sur localStorage si l'API échoue
           const u = localStorage.getItem('user');
           if (u) {
@@ -120,14 +86,14 @@ const ProjectManagerHome = () => {
             
             // Vérifier que l'utilisateur est bien un PROJECT_MANAGER
             if (parsedUser.role !== 'PROJECT_MANAGER') {
-              console.log('❌ PM Home - Rôle incorrect dans localStorage:', parsedUser.role);
+              devLogger.log('❌ PM Home - Rôle incorrect dans localStorage:', parsedUser.role);
               navigate('/login');
               return;
             }
             
-            console.log('✅ PM Home - Utilisateur PM chargé depuis localStorage:', parsedUser.name);
+            devLogger.log('✅ PM Home - Utilisateur PM chargé depuis localStorage:', parsedUser.name);
           } else {
-            console.log('❌ PM Home - Aucune donnée utilisateur trouvée');
+            devLogger.log('❌ PM Home - Aucune donnée utilisateur trouvée');
             navigate('/login');
             return;
           }
@@ -142,14 +108,14 @@ const ProjectManagerHome = () => {
           
           // Vérifier que l'utilisateur est bien un PROJECT_MANAGER
           if (parsedUser.role !== 'PROJECT_MANAGER') {
-            console.log('❌ PM Home - Rôle incorrect dans localStorage (catch):', parsedUser.role);
+            devLogger.log('❌ PM Home - Rôle incorrect dans localStorage (catch):', parsedUser.role);
             navigate('/login');
             return;
           }
           
-          console.log('✅ PM Home - Utilisateur PM chargé depuis localStorage (catch):', parsedUser.name);
+          devLogger.log('✅ PM Home - Utilisateur PM chargé depuis localStorage (catch):', parsedUser.name);
         } else {
-          console.log('❌ PM Home - Aucune donnée utilisateur trouvée (catch)');
+          devLogger.log('❌ PM Home - Aucune donnée utilisateur trouvée (catch)');
           navigate('/login');
           return;
         }
@@ -163,12 +129,12 @@ const ProjectManagerHome = () => {
 
     // Écouter les événements de nouvelle demande
     const handleNewApplication = () => {
-      console.log('🔔 PM Home - Nouvelle demande détectée, rafraîchissement des compteurs');
+      devLogger.log('🔔 PM Home - Nouvelle demande détectée, rafraîchissement des compteurs');
       fetchPendingCounts();
     };
 
     const handleNewRecord = () => {
-      console.log('🔔 PM Home - Nouveau record détecté, rafraîchissement des compteurs');
+      devLogger.log('🔔 PM Home - Nouveau record détecté, rafraîchissement des compteurs');
       fetchPendingCounts();
     };
 

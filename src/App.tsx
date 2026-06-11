@@ -29,11 +29,12 @@ const LoadingFallback = () => (
 );
 
 function PrivateRoute({ children, roles }: { children: React.ReactNode; roles: string[] }) {
+  const useCookies = import.meta.env.VITE_USE_HTTPONLY_COOKIES !== 'false';
   const token = localStorage.getItem('token');
   const user = localStorage.getItem('user');
   const currentUserId = localStorage.getItem('currentUserId');
   
-  if (!token || !user) {
+  if (!user || (!useCookies && !token)) {
     return <Navigate to="/login" />;
   }
   

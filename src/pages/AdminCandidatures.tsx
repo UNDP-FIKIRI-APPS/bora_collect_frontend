@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 
 interface Application {
   id: string;
@@ -34,35 +34,18 @@ const AdminCandidatures: React.FC = () => {
   const [reviewComments, setReviewComments] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const apiBaseUrl = environment.apiBaseUrl;
-
   useEffect(() => {
     fetchApplications();
   }, []);
 
   const fetchApplications = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
-        return;
-      }
-
-      const response = await fetch(`${apiBaseUrl}/surveys/admin/applications`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      const data = await enhancedApiService.get<Application[]>('/surveys/admin/applications', {
+        skipCache: true,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setApplications(data);
-      } else {
-        toast.error('Erreur lors du chargement des candidatures');
-      }
-    } catch (error) {
-      toast.error('Erreur de connexion au serveur');
+      setApplications(data);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     } finally {
       setLoading(false);
     }
@@ -72,32 +55,18 @@ const AdminCandidatures: React.FC = () => {
     if (!selectedApplication) return;
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${apiBaseUrl}/surveys/applications/${selectedApplication.id}/review`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: reviewStatus,
-          comments: reviewComments.trim() || undefined,
-        }),
+      await enhancedApiService.post(`/surveys/applications/${selectedApplication.id}/review`, {
+        status: reviewStatus,
+        comments: reviewComments.trim() || undefined,
       });
-
-      if (response.ok) {
-        const actionText = reviewStatus === 'APPROVED' ? 'approuvée' : 'rejetée';
-        toast.success(`Candidature ${actionText} avec succès !`);
-        setShowReviewModal(false);
-        setSelectedApplication(null);
-        setReviewComments('');
-        fetchApplications();
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || 'Erreur lors de l\'examen de la candidature');
-      }
-    } catch (error) {
-      toast.error('Erreur de connexion au serveur');
+      const actionText = reviewStatus === 'APPROVED' ? 'approuvée' : 'rejetée';
+      toast.success(`Candidature ${actionText} avec succès !`);
+      setShowReviewModal(false);
+      setSelectedApplication(null);
+      setReviewComments('');
+      fetchApplications();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     }
   };
 

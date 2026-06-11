@@ -1,5 +1,7 @@
 import React from 'react';
 import ProjectManagerForm from '../components/ProjectManagerForm';
+import { devLogger } from '../utils/logger';
+
 
 interface AdminCreateProjectManagerProps {
   onBack?: () => void;
@@ -11,7 +13,7 @@ const AdminCreateProjectManager: React.FC<AdminCreateProjectManagerProps> = ({ o
       isAdmin={true}
       onBack={onBack}
       onSuccess={() => {
-        console.log('Project Manager créé avec succès');
+        devLogger.log('Project Manager créé avec succès');
       }}
     />
   );

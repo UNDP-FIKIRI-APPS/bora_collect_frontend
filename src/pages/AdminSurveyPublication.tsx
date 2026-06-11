@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 import ConfirmationModal from '../components/ConfirmationModal';
+import { isAuthenticated } from '../utils/authStorage';
 
 // Types et interfaces
 interface Survey {
@@ -72,9 +73,6 @@ const AdminSurveyPublication: React.FC = () => {
   const [showDeleteSurveyModal, setShowDeleteSurveyModal] = useState(false);
   const [surveyToDelete, setSurveyToDelete] = useState<{ id: string; title: string } | null>(null);
 
-  // Configuration
-  const apiBaseUrl = environment.apiBaseUrl;
-
   // Fonction utilitaire pour la gestion des erreurs
   const handleApiError = useCallback((error: any, context: string) => {
     console.error(`❌ Erreur ${context}:`, error);
@@ -122,106 +120,26 @@ const AdminSurveyPublication: React.FC = () => {
     }
   }, []);
 
-  // Fonction pour obtenir le token d'authentification
-  const getAuthToken = useCallback((): string | null => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error('Vous devez être connecté pour accéder à cette page');
-      return null;
-    }
-
-    // Vérifier si le token est expiré
-    try {
-      const tokenParts = token.split('.');
-      if (tokenParts.length === 3) {
-        const payload = JSON.parse(atob(tokenParts[1]));
-        const now = Math.floor(Date.now() / 1000);
-        
-        if (payload.exp && payload.exp < now) {
-          toast.error('Votre session a expiré. Veuillez vous reconnecter.');
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          return null;
-        }
-      }
-    } catch (error) {
-      console.error('Erreur lors de la vérification du token:', error);
-      toast.error('Token invalide. Veuillez vous reconnecter.');
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      return null;
-    }
-
-    return token;
+  const ensureAuthenticated = useCallback((): boolean => {
+    if (isAuthenticated()) return true;
+    toast.error('Vous devez être connecté pour effectuer cette action');
+    return false;
   }, []);
-
-  const refreshTokenIfNeeded = useCallback(async (): Promise<string | null> => {
-    const token = getAuthToken();
-    if (token) return token;
-
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (!refreshToken) {
-      toast.error('Session expirée. Veuillez vous reconnecter.');
-      localStorage.removeItem('user');
-      return null;
-    }
-
-    try {
-      const response = await fetch(`${apiBaseUrl}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-
-      if (response.ok) {
-        const loginData = await response.json();
-        localStorage.setItem('token', loginData.access_token);
-        if (loginData.refresh_token) {
-          localStorage.setItem('refresh_token', loginData.refresh_token);
-        }
-        if (loginData.session_id) {
-          localStorage.setItem('sessionId', loginData.session_id);
-        }
-        toast.success('Session renouvelée');
-        return loginData.access_token;
-      }
-    } catch (error) {
-      console.error('Erreur lors du renouvellement de session:', error);
-    }
-
-    toast.error('Session expirée. Veuillez vous reconnecter.');
-    localStorage.removeItem('token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('user');
-    return null;
-  }, [apiBaseUrl, getAuthToken]);
 
   // Fonction pour charger les enquêtes
   const fetchSurveys = useCallback(async () => {
     try {
       setLoading(true);
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${apiBaseUrl}/surveys/admin`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await enhancedApiService.get<Survey[]>('/surveys/admin', { skipCache: true });
       setSurveys(data);
     } catch (error) {
       handleApiError(error, 'du chargement des enquêtes');
     } finally {
       setLoading(false);
     }
-  }, [apiBaseUrl, getAuthToken, handleApiError]);
+  }, [ensureAuthenticated, handleApiError]);
 
   // Fonction pour soumettre le formulaire
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
@@ -250,8 +168,7 @@ const AdminSurveyPublication: React.FC = () => {
         return;
       }
 
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
       // Préparation des données
       const cleanData = {
@@ -266,29 +183,9 @@ const AdminSurveyPublication: React.FC = () => {
         maxApplicants: formData.maxApplicants || null
       };
 
-      // URL et méthode
-      const url = editingSurvey 
-        ? `${apiBaseUrl}/surveys/${editingSurvey.id}`
-        : `${apiBaseUrl}/surveys/admin`;
-      
-      const method = editingSurvey ? 'PUT' : 'POST';
-
-      // Envoi de la requête
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(cleanData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      await (editingSurvey
+        ? enhancedApiService.put(`/surveys/${editingSurvey.id}`, cleanData)
+        : enhancedApiService.post('/surveys/admin', cleanData));
       
       // Succès
       const action = editingSurvey ? 'modifiée' : 'créée';
@@ -303,7 +200,7 @@ const AdminSurveyPublication: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [formData, editingSurvey, apiBaseUrl, getAuthToken, handleApiError, fetchSurveys]);
+  }, [formData, editingSurvey, ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonction pour réinitialiser le formulaire
   const resetForm = useCallback(() => {
@@ -342,124 +239,64 @@ const AdminSurveyPublication: React.FC = () => {
   // Fonction pour publier une enquête
   const publishSurvey = useCallback(async (surveyId: string) => {
     try {
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${apiBaseUrl}/surveys/${surveyId}/publish`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      await enhancedApiService.post(`/surveys/${surveyId}/publish`);
       toast.success('Enquête publiée avec succès !');
       await fetchSurveys();
     } catch (error) {
       handleApiError(error, 'de la publication de l\'enquête');
     }
-  }, [apiBaseUrl, getAuthToken, handleApiError, fetchSurveys]);
+  }, [ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonction pour fermer une enquête
   const closeSurvey = useCallback(async (surveyId: string) => {
     try {
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${apiBaseUrl}/surveys/${surveyId}/close`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      await enhancedApiService.post(`/surveys/${surveyId}/close`);
       toast.success('Enquête fermée avec succès !');
       await fetchSurveys();
     } catch (error) {
       handleApiError(error, 'de la fermeture de l\'enquête');
     }
-  }, [apiBaseUrl, getAuthToken, handleApiError, fetchSurveys]);
+  }, [ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonction pour terminer une enquête
   const terminateSurvey = useCallback(async (surveyId: string) => {
     try {
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${apiBaseUrl}/surveys/${surveyId}/terminate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      await enhancedApiService.post(`/surveys/${surveyId}/terminate`);
       toast.success('Enquête terminée avec succès !');
       await fetchSurveys();
     } catch (error) {
       handleApiError(error, 'de la terminaison de l\'enquête');
     }
-  }, [apiBaseUrl, getAuthToken, handleApiError, fetchSurveys]);
+  }, [ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonction pour supprimer une enquête
   const deleteSurvey = useCallback(async (surveyId: string, surveyTitle?: string) => {
     // Cette fonction sera appelée depuis le modal de confirmation
 
     try {
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${apiBaseUrl}/surveys/${surveyId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      await enhancedApiService.delete(`/surveys/${surveyId}`);
       toast.success('Enquête supprimée avec succès !');
       await fetchSurveys();
     } catch (error) {
       handleApiError(error, 'de la suppression de l\'enquête');
     }
-  }, [apiBaseUrl, getAuthToken, handleApiError, fetchSurveys]);
+  }, [ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonction pour charger la liste des Project Managers actifs
   const fetchProjectManagers = useCallback(async () => {
     try {
       setLoadingPMs(true);
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${apiBaseUrl}/users`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const allUsers = await response.json();
+      const allUsers = await enhancedApiService.get<any[]>('/users', { skipCache: true });
       // Filtrer seulement les Project Managers actifs
       const pmUsers = allUsers.filter((user: any) => 
         user.role === 'PROJECT_MANAGER' && user.status === 'ACTIVE'
@@ -470,7 +307,7 @@ const AdminSurveyPublication: React.FC = () => {
     } finally {
       setLoadingPMs(false);
     }
-  }, [apiBaseUrl, getAuthToken, handleApiError]);
+  }, [ensureAuthenticated, handleApiError]);
 
   // Fonction pour ouvrir le modal d'assignation de PM
   const openAssignPMModal = useCallback((survey: Survey) => {
@@ -489,24 +326,12 @@ const AdminSurveyPublication: React.FC = () => {
 
     try {
       setAssigningPM(true);
-      const token = getAuthToken();
-      if (!token) return;
+      if (!ensureAuthenticated()) return;
 
-      const response = await fetch(`${apiBaseUrl}/surveys/${selectedSurveyForPM.id}/assign-pm`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ pmId: selectedPMId }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      const result = await enhancedApiService.post<{ message?: string }>(
+        `/surveys/${selectedSurveyForPM.id}/assign-pm`,
+        { pmId: selectedPMId },
+      );
       toast.success(result.message || 'PM assigné avec succès !');
       setShowAssignPMModal(false);
       setSelectedSurveyForPM(null);
@@ -517,7 +342,7 @@ const AdminSurveyPublication: React.FC = () => {
     } finally {
       setAssigningPM(false);
     }
-  }, [selectedSurveyForPM, selectedPMId, apiBaseUrl, getAuthToken, handleApiError, fetchSurveys]);
+  }, [selectedSurveyForPM, selectedPMId, ensureAuthenticated, handleApiError, fetchSurveys]);
 
   // Fonctions utilitaires pour l'affichage
   const getStatusLabel = useCallback((status: string) => {

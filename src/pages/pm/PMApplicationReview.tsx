@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { environment } from '../../config/environment';
+import enhancedApiService from '../../services/enhancedApiService';
+import { devLogger } from '../../utils/logger';
+
 
 interface Application {
   id: string;
@@ -114,36 +116,13 @@ const PMApplicationReview: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const fetchApplications = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch(`${environment.apiBaseUrl}/surveys/pm-applications`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      const data = await enhancedApiService.get<any[]>('/surveys/pm-applications', {
+        skipCache: true,
+        skipToast: true,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setApplications(data);
-      } else if (response.status === 401) {
-        console.log('🔐 Session expirée - redirection vers login');
-        // Ne pas afficher de toast pour éviter les notifications répétées
-      } else if (response.status === 403) {
-        console.log('🚫 Forbidden - user may not have proper permissions');
-        // Ne pas afficher de notification d'erreur pour les PM connectés
-      } else {
-        console.log(`❌ Erreur ${response.status}: ${response.statusText}`);
-        // Ne pas afficher de toast pour éviter les notifications répétées
-      }
+      setApplications(data);
     } catch (error) {
-      console.log('❌ Erreur de connexion au serveur:', error);
-      // Ne pas afficher de toast pour éviter les notifications répétées
+      devLogger.log('❌ Erreur de connexion au serveur:', error);
     } finally {
       setLoading(false);
     }
@@ -151,22 +130,8 @@ const PMApplicationReview: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
 
   const fetchApplicationStats = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        return;
-      }
-
-      const response = await fetch(`${environment.apiBaseUrl}/surveys/pm-application-stats`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      const data = await enhancedApiService.get<any>('/surveys/pm-application-stats', { skipCache: true });
+      setStats(data);
     } catch (error) {
       // Erreur silencieuse pour les stats
     }
@@ -175,44 +140,27 @@ const PMApplicationReview: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const handleReview = async (applicationId: string, action: 'approve' | 'reject') => {
     setReviewing(applicationId);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${environment.apiBaseUrl}/surveys/applications/${applicationId}/pm-review`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: action === 'approve' ? 'APPROVE' : 'REJECT',
-          comments: comments.trim() || undefined,
-        }),
+      await enhancedApiService.post(`/surveys/applications/${applicationId}/pm-review`, {
+        action: action === 'approve' ? 'APPROVE' : 'REJECT',
+        comments: comments.trim() || undefined,
       });
 
-      if (response.ok) {
-        const actionText = action === 'approve' ? 'approuvée' : 'rejetée';
-        toast.success(`Candidature ${actionText} avec succès !`);
-        
-        // Mettre à jour les listes
-        await fetchApplications();
-        await fetchApplicationStats();
-        
-        // Déclencher un événement pour mettre à jour la page enquêteur si c'est une approbation
-        if (action === 'approve') {
-          window.dispatchEvent(new CustomEvent('enumeratorApproved', { 
-            detail: { applicationId, userId: selectedApplication?.user.id } 
-          }));
-        }
-        
-        // Fermer le modal
-        setShowModal(false);
-        setSelectedApplication(null);
-        setComments('');
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || `Erreur lors de l'${action === 'approve' ? 'approbation' : 'rejet'}`);
+      const actionText = action === 'approve' ? 'approuvée' : 'rejetée';
+      toast.success(`Candidature ${actionText} avec succès !`);
+      await fetchApplications();
+      await fetchApplicationStats();
+
+      if (action === 'approve') {
+        window.dispatchEvent(new CustomEvent('enumeratorApproved', {
+          detail: { applicationId, userId: selectedApplication?.user.id },
+        }));
       }
-    } catch (error) {
-      toast.error('Erreur de connexion au serveur');
+
+      setShowModal(false);
+      setSelectedApplication(null);
+      setComments('');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     } finally {
       setReviewing(null);
     }

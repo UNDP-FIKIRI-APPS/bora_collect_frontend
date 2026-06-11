@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import enhancedApiService from '../../services/enhancedApiService';
 import { environment } from '../../config/environment';
 import UserCreationForm from '../../components/UserCreationForm';
+import { devLogger } from '../../utils/logger';
+
 
 interface User {
   id: string;
@@ -36,7 +39,7 @@ const PMAnalystManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [campaigns, setCampaigns] = useState([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   
   // États pour les filtres et la recherche
@@ -49,19 +52,8 @@ const PMAnalystManagement: React.FC = () => {
   const fetchCampaigns = async () => {
     setLoadingCampaigns(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${environment.apiBaseUrl}/users/campaigns`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.ok) {
-        const campaignsData = await response.json();
-        setCampaigns(campaignsData);
-      } else {
-        console.error('Erreur lors du chargement des campagnes');
-      }
+      const campaignsData = await enhancedApiService.get<any[]>('/users/campaigns', { skipCache: true });
+      setCampaigns(campaignsData);
     } catch (error) {
       console.error('Erreur lors du chargement des campagnes:', error);
     } finally {
@@ -114,7 +106,7 @@ const PMAnalystManagement: React.FC = () => {
   // Écouter les événements d'approbation d'enquêteurs
   useEffect(() => {
     const handleEnumeratorApproved = () => {
-      console.log('🔄 Événement enumeratorApproved reçu - rechargement des utilisateurs');
+      devLogger.log('🔄 Événement enumeratorApproved reçu - rechargement des utilisateurs');
       fetchUsers();
     };
 
@@ -128,37 +120,13 @@ const PMAnalystManagement: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour accéder à cette page');
-        setLoading(false);
-        return;
-      }
-
-      // Récupérer les utilisateurs approuvés pour les campagnes du PM
-      const response = await fetch(`${environment.apiBaseUrl}/users/pm-approved-enumerators`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      const approvedUsers = await enhancedApiService.get<any[]>('/users/pm-approved-enumerators', {
+        skipCache: true,
+        skipToast: true,
       });
-
-      if (response.ok) {
-        const approvedUsers = await response.json();
-        setUsers(approvedUsers);
-      } else if (response.status === 401) {
-        console.log('🔐 Session expirée - redirection vers login');
-        // Ne pas afficher de toast pour éviter les notifications répétées
-      } else if (response.status === 403) {
-        console.log('🚫 Forbidden - user may not have proper permissions');
-        // Ne pas afficher de notification d'erreur pour les PM connectés
-      } else {
-        console.log(`❌ Erreur ${response.status}: ${response.statusText}`);
-        // Ne pas afficher de toast pour éviter les notifications répétées
-      }
-    } catch (error) {
-      console.log('❌ Erreur de connexion au serveur:', error);
-      // Ne pas afficher de toast pour éviter les notifications répétées
+      setUsers(approvedUsers);
+    } catch (error: any) {
+      devLogger.log('❌ Erreur de connexion au serveur:', error);
     } finally {
       setLoading(false);
     }
@@ -168,12 +136,6 @@ const PMAnalystManagement: React.FC = () => {
     try {
       setSubmitting(true);
       
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté pour créer un utilisateur');
-        return;
-      }
-
       // Préparation des données avec le rôle sélectionné
       const cleanData = {
         name: formData.name.trim(),
@@ -191,26 +153,14 @@ const PMAnalystManagement: React.FC = () => {
       // Envoi de la requête selon le rôle
       let endpoint = '';
       if (formData.role === 'ANALYST') {
-        endpoint = `${environment.apiBaseUrl}/users/pm-create-analyst`;
+        endpoint = '/users/pm-create-analyst';
       } else if (formData.role === 'CONTROLLER') {
-        endpoint = `${environment.apiBaseUrl}/users/pm-create-enumerator`;
+        endpoint = '/users/pm-create-enumerator';
       } else {
         throw new Error('Rôle non supporté pour la création par PM');
       }
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(cleanData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
+      await enhancedApiService.post(endpoint, cleanData);
 
       const roleLabel = formData.role === 'CONTROLLER' ? 'Enquêteur' : 'Analyste';
       toast.success(`${roleLabel} créé avec succès !`);
@@ -234,23 +184,9 @@ const PMAnalystManagement: React.FC = () => {
 
     try {
       setSubmitting(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${environment.apiBaseUrl}/users/${userId}/remove-from-campaign`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ surveyId })
-      });
-
-      if (response.ok) {
-        toast.success('Enquêteur retiré de la campagne avec succès');
-        fetchUsers(); // Recharger la liste
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || 'Erreur lors du retrait de la campagne');
-      }
+      await enhancedApiService.post(`/users/${userId}/remove-from-campaign`, { surveyId });
+      toast.success('Enquêteur retiré de la campagne avec succès');
+      fetchUsers();
     } catch (error) {
       console.error('Erreur lors du retrait:', error);
       toast.error('Erreur lors du retrait de l\'enquêteur de la campagne');
@@ -262,29 +198,12 @@ const PMAnalystManagement: React.FC = () => {
 
   const toggleAnalystStatus = async (analystId: string, currentStatus: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       const newStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      
-      const response = await fetch(`${environment.apiBaseUrl}/users/${analystId}/toggle-status`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (response.ok) {
-        toast.success(`Utilisateur ${newStatus === 'ACTIVE' ? 'activé' : 'désactivé'} avec succès !`);
-        await fetchUsers();
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || 'Erreur lors du changement de statut');
-      }
-    } catch (error) {
-      toast.error('Erreur de connexion au serveur');
+      await enhancedApiService.post(`/users/${analystId}/toggle-status`, { status: newStatus });
+      toast.success(`Utilisateur ${newStatus === 'ACTIVE' ? 'activé' : 'désactivé'} avec succès !`);
+      await fetchUsers();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur de connexion au serveur');
     }
   };
 

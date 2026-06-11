@@ -157,9 +157,6 @@ const AdminCampaignData: React.FC<AdminCampaignDataProps> = ({ onBack }) => {
   const fetchEnumeratorStats = async (campaignId: string) => {
     setEnumeratorStatsLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const responseData = await enhancedApiService.get<any>(`/records/campaign/${campaignId}/enumerators/stats`, {
         skipCache: true,
@@ -182,9 +179,6 @@ const AdminCampaignData: React.FC<AdminCampaignDataProps> = ({ onBack }) => {
   const fetchEnumeratorSubmissions = async (enumeratorId: string, campaignId: string) => {
     setEnumeratorSubmissionsLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const responseData = await enhancedApiService.get<any>(`/records/campaign/${campaignId}/enumerator/${enumeratorId}/submissions`, {
         skipCache: true,
@@ -207,9 +201,6 @@ const AdminCampaignData: React.FC<AdminCampaignDataProps> = ({ onBack }) => {
   const fetchCampaigns = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const responseData = await enhancedApiService.get<any>('/surveys/admin', {
         skipCache: true,
@@ -231,9 +222,6 @@ const AdminCampaignData: React.FC<AdminCampaignDataProps> = ({ onBack }) => {
   const fetchCampaignResponses = async (campaignId: string, page: number = 1) => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API avec pagination
       const responseData = await enhancedApiService.get<any>(
         `/records/campaign/${campaignId}?page=${page}&limit=${pageSize}`,
@@ -295,51 +283,22 @@ const AdminCampaignData: React.FC<AdminCampaignDataProps> = ({ onBack }) => {
 
     setResetting(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté');
-        return;
-      }
-
-      const response = await fetch(`${environment.apiBaseUrl}/records/campaign/${selectedCampaign}/reset`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      const data = await enhancedApiService.delete<any>(
+        `/records/campaign/${selectedCampaign}/reset`,
+      );
+      setSuccessNotification({
+        show: true,
+        message: `✅ ${data.message}. ${data.totalDeleted} formulaire(s) supprimé(s).`,
+        type: 'success',
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSuccessNotification({
-          show: true,
-          message: `✅ ${data.message}. ${data.totalDeleted} formulaire(s) supprimé(s).`,
-          type: 'success'
-        });
-        
-        // Fermer le modal
-        setShowResetModal(false);
-        
-        // Recharger les données (qui seront maintenant vides)
-        fetchCampaignResponses(selectedCampaign);
-        fetchEnumeratorStats(selectedCampaign);
-        
-        // Réinitialiser les états
-        setResponses([]);
-        setEnumeratorStats([]);
-        setEnumeratorSubmissions(null);
-        setSelectedEnumeratorId(null);
-        
-        toast.success('Données de la campagne réinitialisées avec succès');
-      } else {
-        setSuccessNotification({
-          show: true,
-          message: `❌ Erreur: ${data.message || 'Impossible de réinitialiser les données'}`,
-          type: 'error'
-        });
-        toast.error(data.message || 'Erreur lors de la réinitialisation');
-      }
+      setShowResetModal(false);
+      fetchCampaignResponses(selectedCampaign);
+      fetchEnumeratorStats(selectedCampaign);
+      setResponses([]);
+      setEnumeratorStats([]);
+      setEnumeratorSubmissions(null);
+      setSelectedEnumeratorId(null);
+      toast.success('Données de la campagne réinitialisées avec succès');
     } catch (error: any) {
       console.error('Erreur lors de la réinitialisation:', error);
       setSuccessNotification({
@@ -361,34 +320,15 @@ const AdminCampaignData: React.FC<AdminCampaignDataProps> = ({ onBack }) => {
 
     setExporting(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Vous devez être connecté');
-        return;
-      }
-
-      const response = await fetch(
-        `${environment.apiBaseUrl}/records/campaign/${selectedCampaign}/export`,
-        { headers: { Authorization: `Bearer ${token}` } },
+      const { blob, filename } = await enhancedApiService.downloadBlob(
+        `/records/campaign/${selectedCampaign}/export`,
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Erreur lors de l\'export');
-      }
-
-      const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
 
       const campaign = campaigns.find((c) => c.id === selectedCampaign);
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let fileName = `donnees_campagne_${campaign?.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'campagne'}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename="(.+)"/);
-        if (match) fileName = match[1];
-      }
+      let fileName = filename || `donnees_campagne_${campaign?.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'campagne'}_${new Date().toISOString().split('T')[0]}.xlsx`;
 
       link.download = fileName;
       document.body.appendChild(link);

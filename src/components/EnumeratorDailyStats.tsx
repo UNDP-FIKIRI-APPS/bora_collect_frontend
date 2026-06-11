@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 
 interface EnumeratorDailyStatsProps {
   enumeratorId: string;
@@ -21,21 +21,11 @@ export default function EnumeratorDailyStats({
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        // Récupérer les records de cet enquêteur avec les détails quotidiens
-        const response = await fetch(`${environment.apiBaseUrl}/validation/enumerator-daily/${enumeratorId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data);
-        }
+        const data = await enhancedApiService.get<any>(
+          `/validation/enumerator-daily/${enumeratorId}`,
+          { skipCache: true },
+        );
+        setStats(data);
       } catch (err) {
         console.error('Erreur lors de la récupération des stats:', err);
         setError('Erreur lors du chargement des données');

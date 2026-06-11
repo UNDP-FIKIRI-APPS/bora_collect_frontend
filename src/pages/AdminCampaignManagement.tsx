@@ -95,12 +95,6 @@ const AdminCampaignManagement: React.FC = () => {
   const fetchCampaigns = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.error('❌ Aucun token trouvé');
-        return;
-      }
-
       // Vérifier que l'utilisateur est bien ADMIN
       const user = localStorage.getItem('user');
       if (user) {
@@ -280,9 +274,6 @@ const AdminCampaignManagement: React.FC = () => {
 
     try {
       setAssigningPM(true);
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const result = await enhancedApiService.post<any>(
         `/surveys/${selectedCampaignForPM.id}/create-and-assign-pm`,

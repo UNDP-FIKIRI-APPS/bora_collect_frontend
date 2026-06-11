@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { environment } from '../config/environment';
+import enhancedApiService from '../services/enhancedApiService';
 
 export default function AdminParametres() {
   const [user, setUser] = useState<any>(null);
@@ -27,14 +27,8 @@ export default function AdminParametres() {
     e.preventDefault();
     setInfoMsg(''); setInfoError(''); setSaving(true);
     try {
-      const res = await fetch(`${environment.apiBaseUrl}/users/me`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) throw new Error('Erreur lors de la mise à jour');
+      const updated = await enhancedApiService.patch<any>('/users/me', form);
       setInfoMsg('Informations mises à jour !');
-      const updated = await res.json();
       setUser(updated);
       localStorage.setItem('user', JSON.stringify(updated));
     } catch (err: any) {
@@ -54,12 +48,7 @@ export default function AdminParametres() {
       return;
     }
     try {
-      const res = await fetch(`${environment.apiBaseUrl}/users/me`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ password: pwd.new1 }),
-      });
-      if (!res.ok) throw new Error('Erreur lors du changement de mot de passe');
+      await enhancedApiService.patch('/users/me', { password: pwd.new1 });
       setPwdMsg('Mot de passe modifié !');
       setPwd({ old: '', new1: '', new2: '' });
     } catch (err: any) {

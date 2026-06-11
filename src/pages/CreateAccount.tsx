@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { APP_LOGO_URL } from '../config/branding';
 import { environment } from '../config/environment';
 import { getCitiesByProvince, getCommunesByCity } from '../data/citiesData';
-import { getQuartiersByCommune } from '../data/quartiersData';
+import { useQuartiers } from '../hooks/useQuartiers';
 import ProjectManagerRegistration from './ProjectManagerRegistration';
 import enhancedApiService from '../services/enhancedApiService';
 
@@ -37,6 +37,11 @@ const CreateAccount = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const quartiers = useQuartiers(
+    showCustomCommune || showCustomCity ? '' : formData.province,
+    showCustomCommune || showCustomCity ? '' : formData.city,
+    showCustomCommune || showCustomCity ? '' : formData.commune,
+  );
 
   // Charger les campagnes disponibles
   useEffect(() => {
@@ -577,7 +582,7 @@ const CreateAccount = () => {
                 required
               >
                 <option value="">Sélectionnez votre quartier</option>
-                {!showCustomCommune && !showCustomCity && getQuartiersByCommune(formData.province, formData.city, formData.commune).map((quartier, index) => (
+                {!showCustomCommune && !showCustomCity && quartiers.map((quartier, index) => (
                   <option key={index} value={quartier}>
                     {quartier}
                   </option>

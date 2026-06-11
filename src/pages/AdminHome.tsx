@@ -1,13 +1,15 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { APP_LOGO_URL } from '../config/branding';
-import AdminDashboardCharts from '../components/AdminDashboardCharts';
-import CarteRDCSVG from '../components/CarteRDCSVG';
+const AdminDashboardCharts = lazy(() => import('../components/AdminDashboardCharts'));
+const CarteRDCSVG = lazy(() => import('../components/CarteRDCSVG'));
 import PNUDFooter from '../components/PNUDFooter';
 import NotificationPanel from '../components/NotificationPanel';
 import { environment } from '../config/environment';
 import enhancedApiService from '../services/enhancedApiService';
 import { performLogout } from '../utils/authStorage';
+import { devLogger } from '../utils/logger';
+
 
 // Lazy loading pour toutes les pages admin
 const AdminUserManagement = lazy(() => import('./AdminUserManagement'));
@@ -109,13 +111,10 @@ export function DashboardAdmin() {
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
         // Utilisation du nouveau service API
         const userData = await enhancedApiService.get<{ user: any }>('/auth/me');
-        console.log('🔍 AdminHome - Données utilisateur chargées:', userData.user);
-        console.log('🔍 AdminHome - profilePhoto:', userData.user.profilePhoto);
+        devLogger.log('🔍 AdminHome - Données utilisateur chargées:', userData.user);
+        devLogger.log('🔍 AdminHome - profilePhoto:', userData.user.profilePhoto);
         setUser(userData.user);
         localStorage.setItem('user', JSON.stringify(userData.user));
       } catch (error) {
@@ -132,9 +131,6 @@ export function DashboardAdmin() {
   // Récupérer les statistiques des campagnes
   const fetchCampaignStats = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const responseData = await enhancedApiService.get<any>('/surveys/admin', {
         skipCache: true,
@@ -171,7 +167,9 @@ export function DashboardAdmin() {
       
       {/* Carte Interactive de la RDC */}
       <div className="px-4 mb-6 sm:mb-8">
-        <CarteRDCSVG />
+        <Suspense fallback={<div className="h-96 bg-gray-100 rounded-xl animate-pulse" />}>
+          <CarteRDCSVG />
+        </Suspense>
       </div>
       
       {/* Statistiques principales avec cartes animées */}
@@ -287,7 +285,9 @@ export function DashboardAdmin() {
         </div>
       </div>
       
-      <AdminDashboardCharts />
+      <Suspense fallback={<div className="h-64 bg-gray-100 rounded-xl animate-pulse mx-4" />}>
+        <AdminDashboardCharts />
+      </Suspense>
     </>
   );
 }
@@ -303,15 +303,12 @@ export default function AdminHome() {
   // Fonction pour charger les compteurs de demandes en attente
   const fetchPendingCounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       // Utilisation du nouveau service API
       const data = await enhancedApiService.get<any>('/surveys/admin/pending-counts', {
         skipCache: true,
       });
       
-      console.log('🔔 Admin Home - Compteurs mis à jour:', data);
+      devLogger.log('🔔 Admin Home - Compteurs mis à jour:', data);
       setPendingCounts(data);
     } catch (err: any) {
       console.error('❌ Erreur lors du chargement des compteurs:', err.message);
@@ -320,16 +317,13 @@ export default function AdminHome() {
 
   // Fonction pour rafraîchir manuellement les compteurs
   const refreshPendingCounts = () => {
-    console.log('🔄 Admin Home - Rafraîchissement manuel des compteurs');
+    devLogger.log('🔄 Admin Home - Rafraîchissement manuel des compteurs');
     fetchPendingCounts();
   };
 
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
         // Utilisation du nouveau service API
         const userData = await enhancedApiService.get<{ user: any }>('/auth/me');
         setUser(userData.user);
@@ -349,12 +343,12 @@ export default function AdminHome() {
 
     // Écouter les événements de nouvelle demande
     const handleNewApplication = () => {
-      console.log('🔔 Admin Home - Nouvelle demande détectée, rafraîchissement des compteurs');
+      devLogger.log('🔔 Admin Home - Nouvelle demande détectée, rafraîchissement des compteurs');
       fetchPendingCounts();
     };
 
     const handleNewRecord = () => {
-      console.log('🔔 Admin Home - Nouveau record détecté, rafraîchissement des compteurs');
+      devLogger.log('🔔 Admin Home - Nouveau record détecté, rafraîchissement des compteurs');
       fetchPendingCounts();
     };
 
@@ -365,8 +359,8 @@ export default function AdminHome() {
     // Écouter les événements de mise à jour du profil
     const handleProfileUpdate = (event: CustomEvent) => {
       const updatedUser = event.detail;
-      console.log('🔍 AdminHome - Profil mis à jour:', updatedUser);
-      console.log('🔍 AdminHome - Nouvelle profilePhoto:', updatedUser.profilePhoto);
+      devLogger.log('🔍 AdminHome - Profil mis à jour:', updatedUser);
+      devLogger.log('🔍 AdminHome - Nouvelle profilePhoto:', updatedUser.profilePhoto);
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
     };
@@ -565,8 +559,8 @@ export default function AdminHome() {
               {user && (
                   <div className="relative">
                     {(() => {
-                      console.log('🔍 AdminHome - Rendu avatar, user:', user);
-                      console.log('🔍 AdminHome - profilePhoto pour avatar:', user.profilePhoto);
+                      devLogger.log('🔍 AdminHome - Rendu avatar, user:', user);
+                      devLogger.log('🔍 AdminHome - profilePhoto pour avatar:', user.profilePhoto);
                       return user?.profilePhoto ? (
                         <img 
                           src={`${environment.apiBaseUrl}${user.profilePhoto}`} 

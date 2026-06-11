@@ -1,13 +1,15 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { APP_LOGO_URL } from '../config/branding';
-import ControllerDashboardCharts from '../components/ControllerDashboardCharts';
 import ControllerDailyObjectives from '../components/ControllerDailyObjectives';
-import ObjectiveAlerts from '../components/ObjectiveAlerts';
-import ObjectiveProjection from '../components/ObjectiveProjection';
 import PNUDFooter from '../components/PNUDFooter';
 import { environment } from '../config/environment';
 import { performLogout } from '../utils/authStorage';
+import enhancedApiService from '../services/enhancedApiService';
+
+const ControllerDashboardCharts = lazy(() => import('../components/ControllerDashboardCharts'));
+const ObjectiveAlerts = lazy(() => import('../components/ObjectiveAlerts'));
+const ObjectiveProjection = lazy(() => import('../components/ObjectiveProjection'));
 
 // Lazy loading pour toutes les pages Controller
 const ControllerCampaignForms = lazy(() => import('./ControllerCampaignForms'));
@@ -41,9 +43,34 @@ const flipCardStyles = `
   }
 `;
 
+const EMPTY_DASHBOARD_STATS = {
+  totalSurveys: 0,
+  totalCampaigns: 0,
+  totalFormsSubmitted: 0,
+  totalCompletedCampaigns: 0,
+  totalOngoingCampaigns: 0,
+  expectedTotal: 0,
+  totalDailyTarget: 0,
+  totalEnumeratorTarget: 0,
+  personalTargets: [] as any[],
+  todaySubmitted: 0,
+  averagePerDay: 0,
+  workedDays: 0,
+  plannedDays: 0,
+  remainingToReach: 0,
+  recordsByMonth: [] as Array<{ month: string; count: number }>,
+};
+
 export function DashboardController({ setView }: { setView: (view: string) => void }) {
-  const [user, setUser] = useState<any>(null);
-  const [dashboardStats, setDashboardStats] = useState<any>(null);
+  const [user, setUser] = useState<any>(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [dashboardStats, setDashboardStats] = useState<any>(EMPTY_DASHBOARD_STATS);
   const [statsLoading, setStatsLoading] = useState(true);
   const [flippedCards, setFlippedCards] = useState<{ [key: string]: boolean }>({});
   const [dailyObjectives, setDailyObjectives] = useState<any[]>([]);
@@ -74,56 +101,40 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
   };
 
   // Fonction pour récupérer les statistiques du tableau de bord
+  const mapDashboardStats = (stats: any) => ({
+    totalSurveys: stats.totalSurveys || 0,
+    totalCampaigns: stats.totalCampaigns || 0,
+    totalFormsSubmitted: stats.totalFormsSubmitted || 0,
+    totalCompletedCampaigns: stats.totalCompletedCampaigns || 0,
+    totalOngoingCampaigns: stats.totalOngoingCampaigns || 0,
+    expectedTotal: stats.expectedTotal || 0,
+    totalDailyTarget: stats.totalDailyTarget || 0,
+    totalEnumeratorTarget:
+      typeof stats.totalEnumeratorTarget === 'number'
+        ? stats.totalEnumeratorTarget
+        : stats.expectedTotal || 0,
+    personalTargets: Array.isArray(stats.personalTargets) ? stats.personalTargets : [],
+    todaySubmitted: stats.todaySubmitted || 0,
+    averagePerDay: stats.averagePerDay || 0,
+    workedDays: stats.workedDays || 0,
+    plannedDays: stats.plannedDays || 0,
+    remainingToReach:
+      typeof stats.remainingToReach === 'number'
+        ? stats.remainingToReach
+        : Math.max((stats.expectedTotal || 0) - (stats.totalFormsSubmitted || 0), 0),
+    recordsByMonth: Array.isArray(stats.recordsByMonth) ? stats.recordsByMonth : [],
+  });
+
   const fetchDashboardStats = async () => {
     setStatsLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Token non trouvé');
-      }
-
-      const statsResponse = await fetch(`${environment.apiBaseUrl}/users/enumerator-stats`, {
-        headers: { 
-          Authorization: `Bearer ${token}`
-        },
-        cache: 'no-store'
+      const stats = await enhancedApiService.get<any>('/users/enumerator-stats', {
+        skipCache: true,
       });
-      
-      if (!statsResponse.ok) {
-        throw new Error(`Erreur HTTP: ${statsResponse.status}`);
-      }
-      
-      const stats = await statsResponse.json();
-      setDashboardStats({
-        totalSurveys: stats.totalSurveys || 0,
-        totalCampaigns: stats.totalCampaigns || 0,
-        totalFormsSubmitted: stats.totalFormsSubmitted || 0,
-        totalCompletedCampaigns: stats.totalCompletedCampaigns || 0,
-        totalOngoingCampaigns: stats.totalOngoingCampaigns || 0,
-        expectedTotal: stats.expectedTotal || 0,
-        totalDailyTarget: stats.totalDailyTarget || 0,
-        totalEnumeratorTarget:
-          typeof stats.totalEnumeratorTarget === 'number'
-            ? stats.totalEnumeratorTarget
-            : stats.expectedTotal || 0,
-        personalTargets: Array.isArray(stats.personalTargets) ? stats.personalTargets : [],
-        todaySubmitted: stats.todaySubmitted || 0,
-        averagePerDay: stats.averagePerDay || 0,
-        workedDays: stats.workedDays || 0,
-        plannedDays: stats.plannedDays || 0,
-        remainingToReach: typeof stats.remainingToReach === 'number'
-          ? stats.remainingToReach
-          : Math.max((stats.expectedTotal || 0) - (stats.totalFormsSubmitted || 0), 0)
-      });
+      setDashboardStats(mapDashboardStats(stats));
     } catch (error) {
       console.error('❌ Erreur lors de la récupération des statistiques:', error);
-      setDashboardStats({
-        totalSurveys: 0,
-        totalCampaigns: 0,
-        totalFormsSubmitted: 0,
-        totalCompletedCampaigns: 0,
-        totalOngoingCampaigns: 0
-      });
+      setDashboardStats(EMPTY_DASHBOARD_STATS);
     } finally {
       setStatsLoading(false);
     }
@@ -133,20 +144,10 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
   const fetchDailyObjectives = async () => {
     setObjectivesLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const response = await fetch(`${environment.apiBaseUrl}/surveys/enumerator-daily-objectives`, {
-        headers: { 
-          Authorization: `Bearer ${token}`
-        },
-        cache: 'no-store'
+      const data = await enhancedApiService.get<any[]>('/surveys/enumerator-daily-objectives', {
+        skipCache: true,
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setDailyObjectives(Array.isArray(data) ? data : []);
-      }
+      setDailyObjectives(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('❌ Erreur lors de la récupération des objectifs:', error);
       setDailyObjectives([]);
@@ -156,99 +157,34 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
   };
 
   useEffect(() => {
-    const loadUserData = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        const response = await fetch(`${environment.apiBaseUrl}/auth/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData.user);
-        }
-      } catch (error) {
-        console.error('Erreur lors du chargement des données utilisateur:', error);
-      }
+    const loadDashboard = async () => {
+      await Promise.all([
+        fetchDashboardStats(),
+        fetchDailyObjectives(),
+        enhancedApiService
+          .get<{ user: any }>('/auth/me', { skipCache: true })
+          .then((userData) => {
+            if (userData?.user) {
+              setUser(userData.user);
+              localStorage.setItem('user', JSON.stringify(userData.user));
+            }
+          })
+          .catch(() => undefined),
+      ]);
     };
 
-    loadUserData();
-  }, []);
+    loadDashboard();
 
-  useEffect(() => {
-    if (user) {
-      fetchDashboardStats();
-      fetchDailyObjectives();
-      
-      // Refresh automatique supprimé - les statistiques seront mises à jour uniquement via les événements
-    }
-    return undefined;
-  }, [user]);
+    const onNewRecord = () => {
+      void fetchDashboardStats();
+      void fetchDailyObjectives();
+    };
+    window.addEventListener('newRecordSubmitted', onNewRecord);
+    return () => window.removeEventListener('newRecordSubmitted', onNewRecord);
+  }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // Supprimer la vérification !user dans DashboardController car elle est déjà faite dans ControllerHome
-
-  // Afficher un écran de chargement si les données ne sont pas encore prêtes
-  if (statsLoading || !user || !dashboardStats) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-        {/* Styles CSS pour les animations */}
-        <style dangerouslySetInnerHTML={{ __html: flipCardStyles }} />
-        
-        {/* Skeleton pour l'en-tête */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl shadow-lg p-4 sm:p-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
-            <div className="flex-1">
-              <div className="animate-pulse bg-white/20 rounded h-8 w-64 mb-2"></div>
-              <div className="animate-pulse bg-white/20 rounded h-4 w-32"></div>
-            </div>
-            <div className="flex items-center gap-3 mt-4 sm:mt-0">
-              <div className="animate-pulse bg-white/20 rounded-full w-12 h-12"></div>
-              <div className="text-right">
-                <div className="animate-pulse bg-white/20 rounded h-4 w-24 mb-1"></div>
-                <div className="animate-pulse bg-white/20 rounded h-3 w-32"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Skeleton pour les cartes de statistiques */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="relative w-full h-32">
-              <div className="absolute inset-0 bg-gradient-to-br from-gray-300 to-gray-400 rounded-xl shadow-lg animate-pulse">
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center text-white">
-                    <div className="animate-pulse bg-white/20 rounded w-8 h-8 mx-auto mb-2"></div>
-                    <div className="animate-pulse bg-white/20 rounded h-4 w-24 mb-1"></div>
-                    <div className="animate-pulse bg-white/20 rounded h-3 w-16"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Skeleton pour les graphiques */}
-        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-          <div className="animate-pulse bg-gray-200 rounded h-6 w-48 mb-4"></div>
-          <div className="animate-pulse bg-gray-200 rounded h-64"></div>
-        </div>
-
-        {/* Skeleton pour les actions rapides */}
-        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-          <div className="animate-pulse bg-gray-200 rounded h-6 w-32 mb-4"></div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="animate-pulse bg-gray-200 rounded-lg h-24"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const personalTotal =
     dashboardStats.totalEnumeratorTarget ?? dashboardStats.expectedTotal ?? 0;
@@ -409,7 +345,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   </svg>
                 </div>
                 <div className="text-xs font-semibold">Total de sondages</div>
-                <div className="text-xs opacity-80 mt-1 animate-pulse">Cliquez pour voir</div>
+                <div className="text-xs opacity-80 mt-1">Cliquez pour voir</div>
               </div>
             </div>
             {/* Verso */}
@@ -419,7 +355,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   {statsLoading ? (
                     <div className="animate-pulse bg-white/20 rounded w-12 h-8 mx-auto"></div>
                   ) : (
-                    <span className="inline-block max-w-full overflow-hidden text-ellipsis animate-bounce hover:animate-pulse transition-all duration-300 hover:scale-110 hover:text-yellow-200">
+                    <span className="inline-block max-w-full overflow-hidden text-ellipsis">
                       {formatNumber(dashboardStats?.totalSurveys || 0)}
                     </span>
                   )}
@@ -448,7 +384,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   </svg>
                 </div>
                 <div className="text-xs font-semibold">Mes campagnes</div>
-                <div className="text-xs opacity-80 mt-1 animate-pulse">Cliquez pour voir</div>
+                <div className="text-xs opacity-80 mt-1">Cliquez pour voir</div>
               </div>
             </div>
             {/* Verso */}
@@ -458,7 +394,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   {statsLoading ? (
                     <div className="animate-pulse bg-white/20 rounded w-12 h-8 mx-auto"></div>
                   ) : (
-                    <span className="inline-block max-w-full overflow-hidden text-ellipsis animate-bounce hover:animate-pulse transition-all duration-300 hover:scale-110 hover:text-yellow-200">
+                    <span className="inline-block max-w-full overflow-hidden text-ellipsis">
                       {formatNumber(dashboardStats?.totalCampaigns || 0)}
                     </span>
                   )}
@@ -467,12 +403,12 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   <div className="overflow-hidden text-ellipsis whitespace-nowrap">En cours: {statsLoading ? (
                     <span className="animate-pulse bg-white/20 rounded w-8 h-4 inline-block"></span>
                   ) : (
-                    <span className="animate-bounce">{formatNumber(dashboardStats?.totalOngoingCampaigns || 0)}</span>
+                    <span>{formatNumber(dashboardStats?.totalOngoingCampaigns || 0)}</span>
                   )}</div>
                   <div className="overflow-hidden text-ellipsis whitespace-nowrap">Terminées: {statsLoading ? (
                     <span className="animate-pulse bg-white/20 rounded w-8 h-4 inline-block"></span>
                   ) : (
-                    <span className="animate-bounce">{formatNumber(dashboardStats?.totalCompletedCampaigns || 0)}</span>
+                    <span>{formatNumber(dashboardStats?.totalCompletedCampaigns || 0)}</span>
                   )}</div>
                 </div>
               </div>
@@ -499,7 +435,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   </svg>
                 </div>
                 <div className="text-xs font-semibold">Formulaires soumis</div>
-                <div className="text-xs opacity-80 mt-1 animate-pulse">Cliquez pour voir</div>
+                <div className="text-xs opacity-80 mt-1">Cliquez pour voir</div>
               </div>
             </div>
             {/* Verso */}
@@ -509,7 +445,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   {statsLoading ? (
                     <div className="animate-pulse bg-white/20 rounded w-12 h-8 mx-auto"></div>
                   ) : (
-                    <span className="inline-block max-w-full overflow-hidden text-ellipsis animate-bounce hover:animate-pulse transition-all duration-300 hover:scale-110 hover:text-yellow-200">
+                    <span className="inline-block max-w-full overflow-hidden text-ellipsis">
                       {formatNumber(dashboardStats?.totalFormsSubmitted || 0)}
                     </span>
                   )}
@@ -546,7 +482,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   </svg>
                 </div>
                 <div className="text-xs font-semibold">Objectif personnel total</div>
-                <div className="text-xs opacity-80 mt-1 animate-pulse">Cliquez pour voir</div>
+                <div className="text-xs opacity-80 mt-1">Cliquez pour voir</div>
               </div>
             </div>
             {/* Verso */}
@@ -556,7 +492,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
                   {statsLoading ? (
                     <div className="animate-pulse bg-white/20 rounded w-12 h-8 mx-auto"></div>
                   ) : (
-                    <span className="inline-block max-w-full overflow-hidden text-ellipsis animate-bounce hover:animate-pulse transition-all duration-300 hover:scale-110 hover:text-yellow-200">
+                    <span className="inline-block max-w-full overflow-hidden text-ellipsis">
                       {formatNumber(personalTotal)}
                     </span>
                   )}
@@ -649,13 +585,13 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
         </div>
       )}
 
-      {/* Graphiques */}
-      {!statsLoading && dashboardStats && (
-        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Statistiques personnelles</h3>
+      {/* Graphiques — chargés à la demande (Chart.js) */}
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
+        <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Statistiques personnelles</h3>
+        <Suspense fallback={<PageLoadingFallback />}>
           <ControllerDashboardCharts personalStats={dashboardStats} />
-        </div>
-      )}
+        </Suspense>
+      </div>
 
       {/* Alertes et Objectifs Quotidiens */}
       {!objectivesLoading && dailyObjectives.length > 0 && dailyObjectives[0] && (
@@ -663,26 +599,31 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
           {/* Alertes Intelligentes */}
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
             <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Alertes</h3>
-            <ObjectiveAlerts
-              totalSubmitted={dailyObjectives[0].currentProgress.totalSubmitted}
-              totalTarget={dailyObjectives[0].totalTarget}
-              dailySubmitted={dailyObjectives[0].todayProgress.submitted}
-              dailyTarget={dailyObjectives[0].todayProgress.target}
-              remainingDays={dailyObjectives[0].recommendations.remainingDays}
-              userRole="CONTROLLER"
-            />
+            <Suspense fallback={<PageLoadingFallback />}>
+              <ObjectiveAlerts
+                totalSubmitted={dailyObjectives[0].currentProgress.totalSubmitted}
+                totalTarget={dailyObjectives[0].totalTarget}
+                dailySubmitted={dailyObjectives[0].todayProgress.submitted}
+                dailyTarget={dailyObjectives[0].todayProgress.target}
+                remainingDays={dailyObjectives[0].recommendations.remainingDays}
+                userRole="CONTROLLER"
+              />
+            </Suspense>
           </div>
 
           {/* Projections */}
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-            <ObjectiveProjection
-              totalSubmitted={dailyObjectives[0].currentProgress.totalSubmitted}
-              totalTarget={dailyObjectives[0].totalTarget}
-              dailySubmitted={dailyObjectives[0].todayProgress.submitted}
-              dailyTarget={dailyObjectives[0].todayProgress.target}
-              remainingDays={dailyObjectives[0].recommendations.remainingDays}
-              averageDailyRate={dailyObjectives[0].recommendations.avgPerDay}
-            />
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Projections</h3>
+            <Suspense fallback={<PageLoadingFallback />}>
+              <ObjectiveProjection
+                totalSubmitted={dailyObjectives[0].currentProgress.totalSubmitted}
+                totalTarget={dailyObjectives[0].totalTarget}
+                dailySubmitted={dailyObjectives[0].todayProgress.submitted}
+                dailyTarget={dailyObjectives[0].todayProgress.target}
+                remainingDays={dailyObjectives[0].recommendations.remainingDays}
+                averageDailyRate={dailyObjectives[0].recommendations.avgPerDay}
+              />
+            </Suspense>
           </div>
         </>
       )}
@@ -694,8 +635,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
       </div>
 
       {/* Actions rapides */}
-      {!statsLoading && (
-        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
           <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Actions rapides</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <button
@@ -736,8 +676,7 @@ export function DashboardController({ setView }: { setView: (view: string) => vo
             <div className="text-sm opacity-90">Postuler à des campagnes disponibles</div>
           </button>
         </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
